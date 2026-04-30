@@ -27,7 +27,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { fetchAssessmentByInstance, submitAssessment } from '../services/assessmentService';
+import { fetchAssessmentByInstance, submitAssessment, uploadAttachment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
 
 // ─────────────────────────────────────────────
@@ -615,13 +615,15 @@ export default function AssessmentPlayer({ route, navigation }) {
     const metricTypeSysId = payload.sys_id;
     const submittedAt = new Date().toISOString();
 
-    // Build a flat map of metricID → question for choice lookup
     const questionMap = {};
     (payload.categories || []).forEach(cat =>
       (cat.questions || []).forEach(q => { questionMap[q.metricID] = q; })
     );
 
-    const postCategories = (payload.categories || []).map(cat => ({
+    // Collect attachment answers for separate upload after submit
+    const attachmentAnswers = [];
+
+    const submitCategories = (payload.categories || []).map(cat => ({
       catID: cat.catID,
       questions: (cat.questions || [])
         .filter(q => answers[q.metricID] !== undefined && answers[q.metricID] !== '')
@@ -629,7 +631,6 @@ export default function AssessmentPlayer({ route, navigation }) {
           const raw = answers[q.metricID] || '';
           const question = questionMap[q.metricID];
 
-          // Choice: app stores sys_id for UI state — resolve to numeric value + label for SN
           if (question?.datatype === 'choice') {
             const choice = (question.choices || []).find(c => c.sys_id === raw);
             return {
@@ -639,7 +640,6 @@ export default function AssessmentPlayer({ route, navigation }) {
             };
           }
 
-          // Boolean: stored as 'true'/'false' string
           if (question?.datatype === 'boolean') {
             const boolVal = raw === 'true' ? '1' : '0';
             return {
@@ -649,41 +649,35 @@ export default function AssessmentPlayer({ route, navigation }) {
             };
           }
 
-          return {
-            metricID: q.metricID,
-            value: raw,
-            string_value: raw,
-          };
+          // Strip base64 from body — upload separately after submit
+          if (question?.datatype === 'attachment' && typeof raw === 'string' && raw.startsWith('data:')) {
+            attachmentAnswers.push({ metricID: q.metricID, base64: raw });
+            return { metricID: q.metricID, value: '', string_value: '' };
+          }
+
+          return { metricID: q.metricID, value: raw, string_value: raw };
         }),
     }));
 
-    const postBody = {
+    const submitBody = {
       metric_type_sys_id: metricTypeSysId,
       instance_sys_id: instanceId,
       task_sys_id: payload.task_sys_id || null,
       submitted_by: null,
       submitted_at: submittedAt,
-      categories: postCategories,
-    };
-
-    // Strip base64 attachment data before queuing — localStorage has a ~5MB limit
-    // and base64 images will exceed it. Attachments are uploaded live when online.
-    const strippedBody = {
-      ...postBody,
-      categories: postBody.categories.map(cat => ({
-        ...cat,
-        questions: cat.questions.map(q => ({
-          ...q,
-          value: typeof q.value === 'string' && q.value.startsWith('data:') ? '' : q.value,
-          string_value: typeof q.string_value === 'string' && q.string_value.startsWith('data:') ? '' : q.string_value,
-        })),
-      })),
+      categories: submitCategories,
     };
 
     setSubmitting(true);
     try {
       if (isOnline) {
-        const result = await submitAssessment(postBody);
+        const result = await submitAssessment(submitBody);
+        // Upload attachments separately — keeps submit payload small
+        if (attachmentAnswers.length > 0 && instanceId) {
+          await Promise.allSettled(
+            attachmentAnswers.map(a => uploadAttachment(instanceId, a.metricID, a.base64))
+          );
+        }
         await assessmentStore.clear();
         navigation.replace('SubmissionSuccess', {
           instanceNumber: result?.body?.instance_number || instanceId,
@@ -693,7 +687,7 @@ export default function AssessmentPlayer({ route, navigation }) {
           submittedAt,
         });
       } else {
-        await enqueueSubmission(strippedBody);
+        await enqueueSubmission(submitBody);
         await assessmentStore.clear();
         navigation.replace('SubmissionSuccess', {
           instanceNumber: null,
@@ -704,7 +698,7 @@ export default function AssessmentPlayer({ route, navigation }) {
         });
       }
     } catch (e) {
-      try { await enqueueSubmission(strippedBody); } catch (_) {}
+      try { await enqueueSubmission(submitBody); } catch (_) {}
       await assessmentStore.clear();
       navigation.replace('SubmissionSuccess', {
         instanceNumber: null,

@@ -1,20 +1,8 @@
-/**
- * assessmentService.js
- * Handles all API calls to the SN Offline Assessment Scripted REST endpoints.
- *
- * GET  /api/x_rtg_npm/offline_assessment/{instance_sys_id}
- * POST /api/x_rtg_npm/offline_assessment
- */
-
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
 const BASE_URL = Constants.expoConfig?.extra?.snInstance || 'https://roomstogodev.service-now.com';
 const API_BASE = `${BASE_URL}/api/x_rtg_npm/offline_assessment`;
-
-// ─────────────────────────────────────────────
-// Auth helpers
-// ─────────────────────────────────────────────
 
 async function getAuthHeaders() {
   const token = await AsyncStorage.getItem('sn_token');
@@ -25,7 +13,6 @@ async function getAuthHeaders() {
     };
   }
 
-  // Fallback: Basic auth (dev/testing only)
   const user = await AsyncStorage.getItem('sn_user');
   const pass = await AsyncStorage.getItem('sn_pass');
   if (user && pass) {
@@ -39,23 +26,10 @@ async function getAuthHeaders() {
   throw new Error('Not authenticated. Please log in.');
 }
 
-// ─────────────────────────────────────────────
-// GET — fetch by assessment instance sys_id
-// ─────────────────────────────────────────────
-
-/**
- * Fetches the full assessment payload for a given asmt_assessment_instance sys_id.
- * Used when launched via deep link from the SN mobile UI Action.
- *
- * @param {string} instanceSysId - sys_id of asmt_assessment_instance
- * @returns {Promise<object>} Full payload body from OfflineAssessmentUtils
- */
 export async function fetchAssessmentByInstance(instanceSysId) {
   if (!instanceSysId) throw new Error('instanceSysId is required');
 
-  const url = `${API_BASE}/${instanceSysId}`;
-
-  const response = await fetch(url, {
+  const response = await fetch(`${API_BASE}/${instanceSysId}`, {
     method: 'GET',
     headers: { 'Content-Type': 'application/json' },
   });
@@ -65,8 +39,6 @@ export async function fetchAssessmentByInstance(instanceSysId) {
   }
 
   const json = await response.json();
-
-  // SN wraps in { result: { status, status_code, body } }
   const result = json.result || json;
   if (result.status === 'error') {
     throw new Error(result.error_message || 'Unknown API error');
@@ -75,15 +47,6 @@ export async function fetchAssessmentByInstance(instanceSysId) {
   return result.body ?? result;
 }
 
-// ─────────────────────────────────────────────
-// GET — fetch list of assessments for current user
-// Used by MyAssessments screen
-// ─────────────────────────────────────────────
-
-/**
- * Fetches assessments assigned to the current user.
- * Endpoint should return a list — adjust URL to your list endpoint.
- */
 export async function fetchMyAssessments() {
   const headers = await getAuthHeaders();
   const response = await fetch(`${API_BASE}/list`, { method: 'GET', headers });
@@ -96,52 +59,19 @@ export async function fetchMyAssessments() {
   return json.result || json;
 }
 
-// ─────────────────────────────────────────────
-// POST — submit completed answers
-// ─────────────────────────────────────────────
-
-/**
- * Submits completed assessment answers to SN.
- * Body shape matches OfflineAssessmentUtils.submitAssessmentAnswers.
- *
- * @param {object} payload
- * @param {string} payload.metric_type_sys_id
- * @param {string} [payload.instance_sys_id]
- * @param {string} [payload.submitted_by]
- * @param {string} [payload.submitted_at]
- * @param {Array}  payload.categories
- */
+// Submits the assessment payload — caller is responsible for stripping base64 before calling.
 export async function submitAssessment(payload) {
   let headers = { 'Content-Type': 'application/json' };
   try { headers = await getAuthHeaders(); } catch {}
 
-  // Strip base64 attachment data out of the main JSON body — SN handles
-  // the upload separately via _uploadAttachment using a dedicated field.
-  // Keeping full base64 in the body makes payloads huge and causes timeouts.
-  const attachments = {};
-  const cleanPayload = {
-    ...payload,
-    categories: (payload.categories || []).map(cat => ({
-      ...cat,
-      questions: (cat.questions || []).map(q => {
-        if (q.value && q.value.startsWith('data:')) {
-          attachments[q.metricID] = q.value;
-          return { ...q, value: '', string_value: q.value }; // keep base64 in string_value for SN _uploadAttachment
-        }
-        return q;
-      }),
-    })),
-    _attachments: attachments, // separate map SN can use if needed
-  };
-
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000); // 60s timeout
+  const timeout = setTimeout(() => controller.abort(), 60000);
 
   try {
     const response = await fetch(`${API_BASE}/submit`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(cleanPayload),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
@@ -160,6 +90,42 @@ export async function submitAssessment(payload) {
   } catch (e) {
     if (e.name === 'AbortError') {
       throw new Error('Submit timed out. Your answers have been saved offline.');
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// Uploads a single base64 attachment to the matching instance question after submit.
+export async function uploadAttachment(instanceSysId, metricSysId, base64Data) {
+  let headers = { 'Content-Type': 'application/json' };
+  try { headers = await getAuthHeaders(); } catch {}
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  try {
+    const response = await fetch(`${API_BASE}/upload-attachment`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        instance_sys_id: instanceSysId,
+        metric_sys_id: metricSysId,
+        base64_data: base64Data,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Attachment upload failed: ${response.status}`);
+    }
+
+    const json = await response.json();
+    return json.result || json;
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      throw new Error('Attachment upload timed out.');
     }
     throw e;
   } finally {
