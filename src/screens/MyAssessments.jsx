@@ -38,7 +38,6 @@ export default function MyAssessments({ navigation, route }) {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color="#0a2540" />
-        <Text style={styles.loadingText}>Loading assessment…</Text>
       </View>
     );
   }
