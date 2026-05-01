@@ -211,6 +211,7 @@ function sortChoices(choices) {
 
 function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
   const { datatype, choices, name, question: questionText, mandatory } = question;
+  const [inputHeight, setInputHeight] = React.useState(80);
 
   const label = questionText || name;
 
@@ -334,11 +335,13 @@ function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
         {mandatory && <Text style={styles.required}> *</Text>}
       </Text>
       <TextInput
-        style={styles.textInput}
+        style={[styles.textInput, datatype === 'string' && { height: inputHeight }]}
         value={value || ''}
         onChangeText={onChange}
         multiline={datatype === 'string'}
-        numberOfLines={datatype === 'string' ? 4 : 1}
+        onContentSizeChange={datatype === 'string'
+          ? (e) => setInputHeight(Math.max(80, e.nativeEvent.contentSize.height + 16))
+          : undefined}
         placeholder="Enter response…"
         placeholderTextColor="#9aabb8"
         keyboardType={datatype === 'numeric' || datatype === 'scale' ? 'numeric' : 'default'}
