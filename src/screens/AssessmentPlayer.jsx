@@ -35,7 +35,6 @@ import { assessmentStore } from '../store/assessmentStore';
 // ─────────────────────────────────────────────
 
 const CACHE_KEY = (id) => `assessment_instance_${id}`;
-const QUEUE_KEY = 'response_queue';
 
 async function getCached(instanceSysId) {
   const raw = await AsyncStorage.getItem(CACHE_KEY(instanceSysId));
@@ -44,20 +43,6 @@ async function getCached(instanceSysId) {
 
 async function setCached(instanceSysId, data) {
   await AsyncStorage.setItem(CACHE_KEY(instanceSysId), JSON.stringify(data));
-}
-
-async function enqueueSubmission(payload) {
-  try {
-    const raw = await AsyncStorage.getItem(QUEUE_KEY);
-    const queue = raw ? JSON.parse(raw) : [];
-    queue.push({ ...payload, queuedAt: new Date().toISOString() });
-    await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify(queue));
-  } catch (e) {
-    if (e.name === 'QuotaExceededError' || e.message?.includes('quota') || e.message?.includes('exceeded')) {
-      // Start fresh queue with just this entry
-      try { await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([{ ...payload, queuedAt: new Date().toISOString() }])); } catch (_) {}
-    }
-  }
 }
 
 // ─────────────────────────────────────────────
@@ -543,11 +528,38 @@ export default function AssessmentPlayer({ route, navigation }) {
         }
       });
     });
-    const [saved, savedIndex] = await Promise.all([
+    const [saved, savedIndex, loadedSkus] = await Promise.all([
       assessmentStore.loadAnswers(),
       assessmentStore.loadCategoryIndex(),
+      assessmentStore.loadSkus(),
     ]);
-    setAnswers(saved && Object.keys(saved).length > 0 ? { ...prefilled, ...saved } : prefilled);
+
+    let finalAnswers = saved && Object.keys(saved).length > 0 ? { ...prefilled, ...saved } : prefilled;
+
+    // Apply SKU filter to description immediately so saved answers can't overwrite a filtered value
+    const skusForFilter = loadedSkus || [];
+    if (skusForFilter.length > 0) {
+      const auditCat = data.categories?.find(c => /audit info/i.test(c.name));
+      if (auditCat) {
+        const descQ = auditCat.questions?.find(q => /^description$/i.test(q.name));
+        if (descQ && finalAnswers[descQ.metricID]) {
+          const skuLabels = new Set(skusForFilter.map(s => s.label.toLowerCase()));
+          finalAnswers = {
+            ...finalAnswers,
+            [descQ.metricID]: finalAnswers[descQ.metricID]
+              .split('\n')
+              .filter(line => {
+                const m = line.match(/^SKU:\s*(.+)/i);
+                if (!m) return true;
+                return skuLabels.has(m[1].trim().toLowerCase());
+              })
+              .join('\n'),
+          };
+        }
+      }
+    }
+
+    setAnswers(finalAnswers);
     if (savedIndex > 0) setActiveCategoryIndex(savedIndex);
   }
 
@@ -609,6 +621,15 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   // ── Submit ─────────────────────────────────────────────
   function handleSubmitPress() {
+    if (!isOnline) {
+      if (Platform.OS === 'web') {
+        window.alert('No internet connection. Please connect to Wi-Fi or mobile data before submitting. Your answers are saved and will still be here when you reconnect.');
+      } else {
+        Alert.alert('No Connection', 'Please connect to Wi-Fi or mobile data before submitting.\n\nYour answers are saved and will still be here when you reconnect.');
+      }
+      return;
+    }
+
     if (!allComplete) {
       const incomplete = categories
         .filter(c => !isCategoryComplete(c))
@@ -704,46 +725,29 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     setSubmitting(true);
     try {
-      if (isOnline) {
-        const result = await submitAssessment(submitBody);
-        // Upload attachments, then mark complete — ensures photos land before state changes
-        if (attachmentAnswers.length > 0 && instanceId) {
-          await Promise.allSettled(
-            attachmentAnswers.map(a => uploadAttachment(instanceId, a.metricID, a.base64))
-          );
-        }
-        if (instanceId) {
-          await completeAssessment(instanceId);
-        }
-        await assessmentStore.clear();
-        navigation.replace('SubmissionSuccess', {
-          instanceNumber: result?.body?.instance_number || instanceId,
-          answered: result?.body?.answered ?? null,
-          skipped: result?.body?.skipped ?? null,
-          queued: false,
-          submittedAt,
-        });
-      } else {
-        await enqueueSubmission(submitBody);
-        await assessmentStore.clear();
-        navigation.replace('SubmissionSuccess', {
-          instanceNumber: null,
-          answered: null,
-          skipped: null,
-          queued: true,
-          submittedAt,
-        });
+      const result = await submitAssessment(submitBody);
+      // Upload attachments, then mark complete — ensures photos land before state changes
+      if (attachmentAnswers.length > 0 && instanceId) {
+        await Promise.allSettled(
+          attachmentAnswers.map(a => uploadAttachment(instanceId, a.metricID, a.base64))
+        );
       }
-    } catch (e) {
-      try { await enqueueSubmission(submitBody); } catch (_) {}
+      if (instanceId) {
+        await completeAssessment(instanceId);
+      }
       await assessmentStore.clear();
       navigation.replace('SubmissionSuccess', {
-        instanceNumber: null,
-        answered: null,
-        skipped: null,
-        queued: true,
+        instanceNumber: result?.body?.instance_number || instanceId,
+        answered: result?.body?.answered ?? null,
+        skipped: result?.body?.skipped ?? null,
         submittedAt,
       });
+    } catch (e) {
+      if (Platform.OS === 'web') {
+        window.alert(`Submission failed: ${e.message || 'Please check your connection and try again.'}`);
+      } else {
+        Alert.alert('Submission Failed', e.message || 'Please check your connection and try again.');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -786,7 +790,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       {/* ── Offline banner ── */}
       {!isOnline && (
         <View style={styles.offlineBanner}>
-          <Text style={styles.offlineBannerText}>⚡ Offline — answers will sync when reconnected</Text>
+          <Text style={styles.offlineBannerText}>⚡ Offline — answers are saved. Reconnect to submit.</Text>
         </View>
       )}
 
