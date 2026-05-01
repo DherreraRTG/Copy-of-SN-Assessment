@@ -97,6 +97,22 @@ export async function submitAssessment(payload) {
   }
 }
 
+// Marks the assessment instance complete — call after all attachments are uploaded.
+export async function completeAssessment(instanceSysId) {
+  let headers = { 'Content-Type': 'application/json' };
+  try { headers = await getAuthHeaders(); } catch {}
+
+  const response = await fetch(`${API_BASE}/complete`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ instance_sys_id: instanceSysId }),
+  });
+
+  if (!response.ok) throw new Error(`Complete failed: ${response.status}`);
+  const json = await response.json();
+  return json.result || json;
+}
+
 // Uploads a single base64 attachment to the matching instance question after submit.
 export async function uploadAttachment(instanceSysId, metricSysId, base64Data) {
   let headers = { 'Content-Type': 'application/json' };

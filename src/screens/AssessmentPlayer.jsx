@@ -27,7 +27,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { fetchAssessmentByInstance, submitAssessment, uploadAttachment } from '../services/assessmentService';
+import { fetchAssessmentByInstance, submitAssessment, uploadAttachment, completeAssessment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
 
 // ─────────────────────────────────────────────
@@ -672,11 +672,14 @@ export default function AssessmentPlayer({ route, navigation }) {
     try {
       if (isOnline) {
         const result = await submitAssessment(submitBody);
-        // Upload attachments separately — keeps submit payload small
+        // Upload attachments, then mark complete — ensures photos land before state changes
         if (attachmentAnswers.length > 0 && instanceId) {
           await Promise.allSettled(
             attachmentAnswers.map(a => uploadAttachment(instanceId, a.metricID, a.base64))
           );
+        }
+        if (instanceId) {
+          await completeAssessment(instanceId);
         }
         await assessmentStore.clear();
         navigation.replace('SubmissionSuccess', {
