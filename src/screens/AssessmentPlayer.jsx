@@ -585,6 +585,22 @@ export default function AssessmentPlayer({ route, navigation }) {
       .filter(q => q.mandatory)
       .filter(q => isVisible(q, cat.questions))
       .every(q => {
+        const label = q.question || q.name || '';
+
+        // SKU dimensions — every SKU must have every field filled
+        if (/sku.*assembly|assembly.*dimension/i.test(label)) {
+          const val = answers[q.metricID];
+          if (!val) return false;
+          try {
+            const data = JSON.parse(val);
+            const fields = isNPI ? [...SKU_DIM_BASE, ...SKU_DIM_NPI] : SKU_DIM_BASE;
+            return sessionSkus.length > 0 && sessionSkus.every(sku => {
+              const skuData = data[sku.sys_id] || {};
+              return fields.every(f => skuData[f.key]?.toString().trim());
+            });
+          } catch { return false; }
+        }
+
         const val = answers[q.metricID];
         if (Array.isArray(val)) return val.length > 0;
         return val !== undefined && val !== '' && val !== null;
