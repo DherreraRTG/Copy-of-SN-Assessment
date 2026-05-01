@@ -572,6 +572,16 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   // ── Dependency resolution ──────────────────────────────
   function isVisible(question, categoryQuestions) {
+    // Category gating: if "Do you want to complete this category?" is "No",
+    // hide every question except the gating question itself.
+    const gatingQ = categoryQuestions.find(q =>
+      /(complete this category|want to complete)/i.test(q.question || q.name)
+    );
+    if (gatingQ && gatingQ.metricID !== question.metricID) {
+      const noChoice = (gatingQ.choices || []).find(c => /^no$/i.test(c.label));
+      if (noChoice && answers[gatingQ.metricID] === noChoice.sys_id) return false;
+    }
+
     if (!question.depends_on) return true;
 
     // depends_on may store the parent's internal name OR its metricID (sys_id)
@@ -594,6 +604,15 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   // ── Category completion check ──────────────────────────
   function isCategoryComplete(cat) {
+    // Category gating: "Do you want to complete this category?" answered "No" → treat as complete
+    const gatingQ = (cat.questions || []).find(q =>
+      /(complete this category|want to complete)/i.test(q.question || q.name)
+    );
+    if (gatingQ) {
+      const noChoice = (gatingQ.choices || []).find(c => /^no$/i.test(c.label));
+      if (noChoice && answers[gatingQ.metricID] === noChoice.sys_id) return true;
+    }
+
     return (cat.questions || [])
       .filter(q => !/will this standard be exempted/i.test(q.question || q.name))
       .filter(q => q.mandatory)
@@ -781,8 +800,8 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   const categories = payload.categories || [];
   const activeCategory = categories[activeCategoryIndex];
-  const allComplete = categories.every(isCategoryComplete);
   const isNPI = !!(payload.isNPI || /^npi/i.test(payload.title || ''));
+  const allComplete = categories.every(isCategoryComplete);
 
   return (
     <KeyboardAvoidingView
