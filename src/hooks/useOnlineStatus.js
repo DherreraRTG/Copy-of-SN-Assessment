@@ -1,26 +1,34 @@
 import { useState, useEffect } from 'react';
+import { Platform } from 'react-native';
 import * as Network from 'expo-network';
 
 export function useOnlineStatus() {
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState(
+    Platform.OS === 'web' ? navigator.onLine : true
+  );
 
   useEffect(() => {
-    // Check once on mount
+    if (Platform.OS === 'web') {
+      // expo-network cannot determine reachability in browsers — use native browser events
+      const handleOnline  = () => setIsOnline(true);
+      const handleOffline = () => setIsOnline(false);
+      window.addEventListener('online',  handleOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online',  handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
+
+    // Native: expo-network polling
     Network.getNetworkStateAsync().then(state => {
-      // isInternetReachable is null on web (browser can't determine this), treat as online
-      const reachable = state.isInternetReachable ?? true;
-      setIsOnline(!!(state.isConnected && reachable));
+      setIsOnline(!!(state.isConnected && state.isInternetReachable));
     });
 
-    // Poll every 5 seconds — expo-network doesn't have a listener API
     const interval = setInterval(async () => {
       const state = await Network.getNetworkStateAsync();
-      const reachable = state.isInternetReachable ?? true;
-      const online = !!(state.isConnected && reachable);
-      setIsOnline(prev => {
-        if (prev !== online) return online;
-        return prev;
-      });
+      const online = !!(state.isConnected && state.isInternetReachable);
+      setIsOnline(prev => prev !== online ? online : prev);
     }, 5000);
 
     return () => clearInterval(interval);
