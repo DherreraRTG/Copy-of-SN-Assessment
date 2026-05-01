@@ -215,7 +215,7 @@ function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
   const label = questionText || name;
 
   // "SKUs Assembly and Dimensions" macro — per-SKU accordion form
-  if (/sku.*assembly|assembly.*dimension/i.test(label) || /sku.*assembly|assembly.*dimension/i.test(name)) {
+  if (/sku.*assembly|assembly.*dimension|skus\s+assembly/i.test(label) || /sku.*assembly|assembly.*dimension|skus\s+assembly/i.test(name)) {
     return <SkuDimensionsField value={value} onChange={onChange} sessionSkus={sessionSkus} mandatory={mandatory} label={label} isNPI={isNPI} />;
   }
 
@@ -574,8 +574,10 @@ export default function AssessmentPlayer({ route, navigation }) {
   function isVisible(question, categoryQuestions) {
     if (!question.depends_on) return true;
 
-    // Find the parent question by name
-    const parent = categoryQuestions.find(q => q.name === question.depends_on);
+    // depends_on may store the parent's internal name OR its metricID (sys_id)
+    const parent = categoryQuestions.find(
+      q => q.name === question.depends_on || q.metricID === question.depends_on
+    );
     if (!parent) return true;
 
     const parentAnswer = answers[parent.metricID];
@@ -677,6 +679,7 @@ export default function AssessmentPlayer({ route, navigation }) {
     const submitCategories = (payload.categories || []).map(cat => ({
       catID: cat.catID,
       questions: (cat.questions || [])
+        .filter(q => isVisible(q, cat.questions))
         .filter(q => {
             const v = answers[q.metricID];
             return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== '');
