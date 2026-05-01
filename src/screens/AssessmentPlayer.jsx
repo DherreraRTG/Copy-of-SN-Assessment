@@ -66,16 +66,36 @@ async function enqueueSubmission(payload) {
 
 function WebFileInput({ value, onChange }) {
   const inputRef = React.useRef(null);
+  const files = Array.isArray(value) ? value : (value && typeof value === 'string' && value.startsWith('data:') ? [value] : []);
 
   const handleChange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => onChange(reader.result);
+    reader.onload = () => {
+      onChange([...files, reader.result]);
+      e.target.value = '';
+    };
     reader.readAsDataURL(file);
   };
 
+  const remove = (idx) => onChange(files.filter((_, i) => i !== idx));
+
   return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+    ...files.map((f, idx) =>
+      React.createElement('div', { key: idx, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        f.startsWith('data:image') && React.createElement('img', {
+          src: f,
+          style: { width: 64, height: 64, objectFit: 'cover', borderRadius: 6 },
+        }),
+        !f.startsWith('data:image') && React.createElement('span', { style: { fontSize: 12, color: '#1a6b9a', flex: 1 } }, `✓ File ${idx + 1} attached`),
+        React.createElement('button', {
+          type: 'button',
+          onClick: () => remove(idx),
+          style: { background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 18, lineHeight: 1 },
+        }, '✕'),
+      )
+    ),
     React.createElement('input', {
       ref: inputRef,
       type: 'file',
@@ -96,14 +116,7 @@ function WebFileInput({ value, onChange }) {
         color: '#3a5068',
         textAlign: 'left',
       },
-    }, value ? '📎 Replace file' : '📎 Choose file…'),
-    value && value.startsWith('data:image') && React.createElement('img', {
-      src: value,
-      style: { width: 120, height: 120, objectFit: 'cover', borderRadius: 8, marginTop: 4 },
-    }),
-    value && !value.startsWith('data:image') && React.createElement('span', {
-      style: { fontSize: 12, color: '#1a6b9a' },
-    }, '✓ File attached'),
+    }, files.length > 0 ? '📎 Add another file' : '📎 Choose file…'),
   );
 }
 
@@ -573,6 +586,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       .filter(q => isVisible(q, cat.questions))
       .every(q => {
         const val = answers[q.metricID];
+        if (Array.isArray(val)) return val.length > 0;
         return val !== undefined && val !== '' && val !== null;
       });
   }
@@ -626,7 +640,10 @@ export default function AssessmentPlayer({ route, navigation }) {
     const submitCategories = (payload.categories || []).map(cat => ({
       catID: cat.catID,
       questions: (cat.questions || [])
-        .filter(q => answers[q.metricID] !== undefined && answers[q.metricID] !== '')
+        .filter(q => {
+            const v = answers[q.metricID];
+            return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== '');
+          })
         .map(q => {
           const raw = answers[q.metricID] || '';
           const question = questionMap[q.metricID];
@@ -649,9 +666,10 @@ export default function AssessmentPlayer({ route, navigation }) {
             };
           }
 
-          // Strip base64 from body — upload separately after submit
-          if (question?.datatype === 'attachment' && typeof raw === 'string' && raw.startsWith('data:')) {
-            attachmentAnswers.push({ metricID: q.metricID, base64: raw });
+          // Strip base64 from body — upload separately after submit (supports multiple files)
+          if (question?.datatype === 'attachment') {
+            const fileList = Array.isArray(raw) ? raw : (raw && raw.startsWith('data:') ? [raw] : []);
+            fileList.forEach(base64 => attachmentAnswers.push({ metricID: q.metricID, base64 }));
             return { metricID: q.metricID, value: '', string_value: '' };
           }
 
