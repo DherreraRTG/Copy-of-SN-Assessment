@@ -65,7 +65,7 @@ export async function submitAssessment(payload) {
   try { headers = await getAuthHeaders(); } catch {}
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 60000);
+  const timeout = setTimeout(() => controller.abort(), 120000);
 
   try {
     const response = await fetch(`${API_BASE}/submit`, {
