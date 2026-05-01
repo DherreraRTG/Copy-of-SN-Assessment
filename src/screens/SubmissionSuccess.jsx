@@ -30,11 +30,6 @@ export default function SubmissionSuccess({ route, navigation }) {
 
         <View style={s.divider} />
 
-        {instanceNumber ? (
-          <Row label="Instance" value={instanceNumber} />
-        ) : null}
-        <Row label="Questions answered" value={String(answered ?? '—')} />
-        {skipped > 0 ? <Row label="Skipped" value={String(skipped)} /> : null}
         <Row label="Submitted at" value={time} />
 
         <View style={s.divider} />
