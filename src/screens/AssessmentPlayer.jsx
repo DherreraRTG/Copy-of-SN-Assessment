@@ -759,7 +759,6 @@ export default function AssessmentPlayer({ route, navigation }) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#0a2540" />
-        <Text style={styles.loadingText}>Loading assessment…</Text>
       </View>
     );
   }
