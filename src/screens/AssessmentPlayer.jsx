@@ -475,10 +475,10 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     if (!instanceSysId) {
       // Page was refreshed — try to restore from AsyncStorage
-      assessmentStore.hydrate().then(stored => {
+      assessmentStore.hydrate().then(async stored => {
         if (stored) {
           setPayload(stored);
-          prefillAnswers(stored);
+          await prefillAnswers(stored);
         } else {
           setError('No assessment data or instance ID provided.');
         }
@@ -494,7 +494,7 @@ export default function AssessmentPlayer({ route, navigation }) {
         const cached = await getCached(instanceSysId);
         if (cached) {
           setPayload(cached);
-          prefillAnswers(cached);
+          await prefillAnswers(cached);
         }
 
         // If online, always fetch fresh
@@ -503,7 +503,7 @@ export default function AssessmentPlayer({ route, navigation }) {
           const body = fresh?.result?.body || fresh?.body || fresh;
           await setCached(instanceSysId, body);
           setPayload(body);
-          prefillAnswers(body);
+          await prefillAnswers(body);
         } else if (!cached) {
           setError('No network connection and no cached data for this assessment.');
         }
@@ -559,6 +559,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       }
     }
 
+    if (loadedSkus && loadedSkus.length > 0) setSessionSkus(loadedSkus);
     setAnswers(finalAnswers);
     if (savedIndex > 0) setActiveCategoryIndex(savedIndex);
   }
