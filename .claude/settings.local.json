@@ -7,7 +7,8 @@
       "Bash(grep -r \"Loading assessment\" ./web)",
       "Bash(ls web/)",
       "Bash(ls public/)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(vercel ls *)"
     ]
   }
 }
