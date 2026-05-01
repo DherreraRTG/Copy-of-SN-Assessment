@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(npm install *)",
-      "Bash(vercel dist/)"
+      "Bash(vercel dist/)",
+      "Bash(grep -r \"Loading assessment\" . --include=\"*.html\")",
+      "Bash(grep -r \"Loading assessment\" ./web)",
+      "Bash(ls web/)",
+      "Bash(ls public/)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
