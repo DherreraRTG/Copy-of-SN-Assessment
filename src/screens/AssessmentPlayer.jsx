@@ -976,7 +976,7 @@ export default function AssessmentPlayer({ route, navigation }) {
               {submitting
                 ? uploadProgress
                   ? <Text style={styles.submitBtnText}>
-                      Uploading {uploadProgress.done} / {uploadProgress.total} photos…
+                      Uploading… {Math.round(uploadProgress.done / uploadProgress.total * 100)}%
                     </Text>
                   : <ActivityIndicator color="#fff" size="small" />
                 : <Text style={styles.submitBtnText}>
