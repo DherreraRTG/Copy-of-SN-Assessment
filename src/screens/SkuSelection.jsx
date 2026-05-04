@@ -23,6 +23,7 @@ export default function SkuSelection({ navigation }) {
   const [skipped,   setSkipped]   = useState([]);
   const [hiAssess,  setHiAssess]  = useState([]);
   const [hiSkip,    setHiSkip]    = useState([]);
+  const [ready,     setReady]     = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -45,14 +46,16 @@ export default function SkuSelection({ navigation }) {
       } else if (!assessment) {
         setAssessing(extractSkus(stored));
       }
+      setReady(true);
     }
     init();
   }, []);
 
-  // Auto-save draft on every selection change
+  // Auto-save draft on every selection change (not before init has restored state)
   useEffect(() => {
+    if (!ready) return;
     assessmentStore.saveSkuDraft({ assessing, skipped });
-  }, [assessing, skipped]);
+  }, [assessing, skipped, ready]);
 
   function toggleHiAssess(id) {
     setHiAssess(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
