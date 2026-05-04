@@ -18,7 +18,7 @@ if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator, { navigationRef } from './src/navigation';
-import { fetchAssessmentByInstance } from './src/services/assessmentService';
+import { fetchAssessmentByInstance, initAuth } from './src/services/assessmentService';
 import { assessmentStore } from './src/store/assessmentStore';
 
 /**
@@ -79,6 +79,11 @@ function handleDeepLink(url) {
 
 export default function App() {
   const initialUrlHandled = useRef(false);
+
+  useEffect(() => {
+    // Silently fetch OAuth token on startup so it's ready before any API call
+    initAuth();
+  }, []);
 
   useEffect(() => {
     // 1. Cold launch: app was not running when the link was tapped

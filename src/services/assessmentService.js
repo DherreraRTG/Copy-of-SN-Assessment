@@ -4,145 +4,195 @@ import Constants from 'expo-constants';
 const BASE_URL = Constants.expoConfig?.extra?.snInstance || 'https://roomstogodev.service-now.com';
 const API_BASE = `${BASE_URL}/api/x_rtg_npm/offline_assessment`;
 
+const TOKEN_KEY    = 'sn_oauth_token';
+const EXPIRY_KEY   = 'sn_oauth_expiry';
+const REFRESH_KEY  = 'sn_oauth_refresh';
+
+// ─── Token management ────────────────────────────────────────────────────────
+
+async function fetchNewToken() {
+  const { snClientId, snClientSecret, snUsername, snPassword } = Constants.expoConfig?.extra || {};
+
+  const body = new URLSearchParams({
+    grant_type:    'password',
+    client_id:     snClientId,
+    client_secret: snClientSecret,
+    username:      snUsername,
+    password:      snPassword,
+  });
+
+  const res = await fetch(`${BASE_URL}/oauth_token.do`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    body.toString(),
+  });
+
+  if (!res.ok) throw new Error(`OAuth token fetch failed: ${res.status}`);
+
+  const json = await res.json();
+  if (json.error) throw new Error(json.error_description || json.error);
+
+  const expiresAt = Date.now() + (json.expires_in - 60) * 1000; // 60s buffer
+  await AsyncStorage.multiSet([
+    [TOKEN_KEY,   json.access_token],
+    [EXPIRY_KEY,  String(expiresAt)],
+    ...(json.refresh_token ? [[REFRESH_KEY, json.refresh_token]] : []),
+  ]);
+
+  return json.access_token;
+}
+
+async function refreshToken() {
+  const refresh = await AsyncStorage.getItem(REFRESH_KEY);
+  if (!refresh) throw new Error('No refresh token');
+
+  const { snClientId, snClientSecret } = Constants.expoConfig?.extra || {};
+
+  const body = new URLSearchParams({
+    grant_type:    'refresh_token',
+    client_id:     snClientId,
+    client_secret: snClientSecret,
+    refresh_token: refresh,
+  });
+
+  const res = await fetch(`${BASE_URL}/oauth_token.do`, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    body.toString(),
+  });
+
+  if (!res.ok) throw new Error('Refresh failed');
+
+  const json = await res.json();
+  if (json.error) throw new Error(json.error_description || json.error);
+
+  const expiresAt = Date.now() + (json.expires_in - 60) * 1000;
+  await AsyncStorage.multiSet([
+    [TOKEN_KEY,  json.access_token],
+    [EXPIRY_KEY, String(expiresAt)],
+    ...(json.refresh_token ? [[REFRESH_KEY, json.refresh_token]] : []),
+  ]);
+
+  return json.access_token;
+}
+
+async function getValidToken() {
+  const [token, expiry] = await AsyncStorage.multiGet([TOKEN_KEY, EXPIRY_KEY])
+    .then(pairs => pairs.map(([, v]) => v));
+
+  if (token && expiry && Date.now() < Number(expiry)) return token;
+
+  // Try refresh first, fall back to full re-auth
+  try { return await refreshToken(); } catch {}
+  return fetchNewToken();
+}
+
 async function getAuthHeaders() {
-  const token = await AsyncStorage.getItem('sn_token');
-  if (token) {
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${token}`,
-    };
-  }
+  const token = await getValidToken();
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+}
 
-  const user = await AsyncStorage.getItem('sn_user');
-  const pass = await AsyncStorage.getItem('sn_pass');
-  if (user && pass) {
-    const encoded = btoa(`${user}:${pass}`);
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': `Basic ${encoded}`,
-    };
+// Fetch wrapper with automatic 401 retry after token refresh
+async function apiFetch(url, options, retried = false) {
+  const res = await fetch(url, options);
+  if (res.status === 401 && !retried) {
+    const token = await fetchNewToken();
+    const headers = { ...options.headers, Authorization: `Bearer ${token}` };
+    return apiFetch(url, { ...options, headers }, true);
   }
+  return res;
+}
 
-  throw new Error('Not authenticated. Please log in.');
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+// Call once on app start to warm up the token while online
+export async function initAuth() {
+  try { await getValidToken(); } catch {}
 }
 
 export async function fetchAssessmentByInstance(instanceSysId) {
   if (!instanceSysId) throw new Error('instanceSysId is required');
 
-  const response = await fetch(`${API_BASE}/${instanceSysId}`, {
-    method: 'GET',
-    headers: { 'Content-Type': 'application/json' },
-  });
+  const headers = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/${instanceSysId}`, { method: 'GET', headers });
 
-  if (!response.ok) {
-    throw new Error(`API error ${response.status}: ${response.statusText}`);
-  }
+  if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
 
-  const json = await response.json();
+  const json = await res.json();
   const result = json.result || json;
-  if (result.status === 'error') {
-    throw new Error(result.error_message || 'Unknown API error');
-  }
+  if (result.status === 'error') throw new Error(result.error_message || 'Unknown API error');
 
   return result.body ?? result;
 }
 
 export async function fetchMyAssessments() {
   const headers = await getAuthHeaders();
-  const response = await fetch(`${API_BASE}/list`, { method: 'GET', headers });
-
-  if (!response.ok) {
-    throw new Error(`API error ${response.status}`);
-  }
-
-  const json = await response.json();
+  const res = await apiFetch(`${API_BASE}/list`, { method: 'GET', headers });
+  if (!res.ok) throw new Error(`API error ${res.status}`);
+  const json = await res.json();
   return json.result || json;
 }
 
-// Submits the assessment payload — caller is responsible for stripping base64 before calling.
 export async function submitAssessment(payload) {
-  let headers = { 'Content-Type': 'application/json' };
-  try { headers = await getAuthHeaders(); } catch {}
-
+  const headers = await getAuthHeaders();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
-    const response = await fetch(`${API_BASE}/submit`, {
+    const res = await apiFetch(`${API_BASE}/submit`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
       signal: controller.signal,
     });
 
-    if (!response.ok) {
-      throw new Error(`Submit failed: ${response.status}`);
-    }
+    if (!res.ok) throw new Error(`Submit failed: ${res.status}`);
 
-    const json = await response.json();
+    const json = await res.json();
     const result = json.result || json;
-
-    if (result.status === 'error') {
-      throw new Error(result.error_message || 'Submit error');
-    }
-
+    if (result.status === 'error') throw new Error(result.error_message || 'Submit error');
     return result;
   } catch (e) {
-    if (e.name === 'AbortError') {
-      throw new Error('Submit timed out. Your answers have been saved offline.');
-    }
+    if (e.name === 'AbortError') throw new Error('Submit timed out. Your answers have been saved offline.');
     throw e;
   } finally {
     clearTimeout(timeout);
   }
 }
 
-// Marks the assessment instance complete — call after all attachments are uploaded.
 export async function completeAssessment(instanceSysId) {
-  let headers = { 'Content-Type': 'application/json' };
-  try { headers = await getAuthHeaders(); } catch {}
-
-  const response = await fetch(`${API_BASE}/complete`, {
+  const headers = await getAuthHeaders();
+  const res = await apiFetch(`${API_BASE}/complete`, {
     method: 'POST',
     headers,
     body: JSON.stringify({ instance_sys_id: instanceSysId }),
   });
-
-  if (!response.ok) throw new Error(`Complete failed: ${response.status}`);
-  const json = await response.json();
+  if (!res.ok) throw new Error(`Complete failed: ${res.status}`);
+  const json = await res.json();
   return json.result || json;
 }
 
-// Uploads a single base64 attachment to the matching instance question after submit.
 export async function uploadAttachment(instanceSysId, metricSysId, base64Data) {
-  let headers = { 'Content-Type': 'application/json' };
-  try { headers = await getAuthHeaders(); } catch {}
-
+  const headers = await getAuthHeaders();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const response = await fetch(`${API_BASE}/upload-attachment`, {
+    const res = await apiFetch(`${API_BASE}/upload-attachment`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
         instance_sys_id: instanceSysId,
-        metric_sys_id: metricSysId,
-        base64_data: base64Data,
+        metric_sys_id:   metricSysId,
+        base64_data:     base64Data,
       }),
       signal: controller.signal,
     });
-
-    if (!response.ok) {
-      throw new Error(`Attachment upload failed: ${response.status}`);
-    }
-
-    const json = await response.json();
+    if (!res.ok) throw new Error(`Attachment upload failed: ${res.status}`);
+    const json = await res.json();
     return json.result || json;
   } catch (e) {
-    if (e.name === 'AbortError') {
-      throw new Error('Attachment upload timed out.');
-    }
+    if (e.name === 'AbortError') throw new Error('Attachment upload timed out.');
     throw e;
   } finally {
     clearTimeout(timeout);
