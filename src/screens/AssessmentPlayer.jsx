@@ -829,15 +829,31 @@ export default function AssessmentPlayer({ route, navigation }) {
     setSubmitting(true);
     try {
       const result = await submitAssessment(submitBody);
-      // Upload attachments, then mark complete — ensures photos land before state changes
+
+      // Upload each attachment sequentially — wait for each to confirm before proceeding
       if (attachmentAnswers.length > 0 && instanceId) {
-        await Promise.allSettled(
-          attachmentAnswers.map(a => uploadAttachment(instanceId, a.metricID, a.base64))
-        );
+        const failed = [];
+        for (let i = 0; i < attachmentAnswers.length; i++) {
+          const { metricID, base64 } = attachmentAnswers[i];
+          try {
+            await uploadAttachment(instanceId, metricID, base64);
+          } catch {
+            failed.push(i + 1);
+          }
+        }
+        if (failed.length > 0) {
+          throw new Error(
+            `${failed.length} of ${attachmentAnswers.length} attachment(s) failed to upload (photo${failed.length > 1 ? 's' : ''} ${failed.join(', ')}). ` +
+            `The assessment answers were saved. Please check your connection and try again.`
+          );
+        }
       }
+
+      // Only mark the NP task closed-complete after all attachments confirmed uploaded
       if (instanceId) {
         await completeAssessment(instanceId);
       }
+
       await assessmentStore.clear();
       navigation.replace('SubmissionSuccess', {
         instanceNumber: result?.body?.instance_number || instanceId,
