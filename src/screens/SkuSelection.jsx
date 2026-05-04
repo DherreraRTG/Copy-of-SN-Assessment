@@ -1,20 +1,9 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Alert, Platform
+  StyleSheet, ActivityIndicator
 } from 'react-native';
 import { assessmentStore } from '../store/assessmentStore';
-
-function confirmAlert(title, message, onConfirm) {
-  if (Platform.OS === 'web') {
-    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
-  } else {
-    Alert.alert(title, message, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Start', style: 'default', onPress: onConfirm },
-    ]);
-  }
-}
 
 function extractSkus(assessment) {
   if (assessment.available_skus?.length) return assessment.available_skus;
@@ -34,7 +23,8 @@ export default function SkuSelection({ navigation }) {
   const [skipped,   setSkipped]   = useState([]);
   const [hiAssess,  setHiAssess]  = useState([]);
   const [hiSkip,    setHiSkip]    = useState([]);
-  const [ready,     setReady]     = useState(false);
+  const [ready,          setReady]          = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
 
   useEffect(() => {
     async function init() {
@@ -92,15 +82,13 @@ export default function SkuSelection({ navigation }) {
   }
 
   function handleStart() {
-    const count = assessing.length;
-    confirmAlert(
-      'Start Assessment?',
-      `You're about to start with ${count} SKU${count !== 1 ? 's' : ''}. Once started, your SKU selection is locked and cannot be changed.`,
-      async () => {
-        await assessmentStore.saveSkus(assessing);
-        navigation.replace('AssessmentPlayer');
-      }
-    );
+    setConfirmVisible(true);
+  }
+
+  async function doStart() {
+    setConfirmVisible(false);
+    await assessmentStore.saveSkus(assessing);
+    navigation.replace('AssessmentPlayer');
   }
 
   if (!assessment) {
@@ -206,6 +194,26 @@ export default function SkuSelection({ navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
+
+      {/* Confirmation modal */}
+      {confirmVisible && (
+        <View style={s.overlay}>
+          <View style={s.dialog}>
+            <Text style={s.dialogTitle}>Start Assessment?</Text>
+            <Text style={s.dialogMsg}>
+              {`You're about to start with ${assessing.length} SKU${assessing.length !== 1 ? 's' : ''}. Once started, your SKU selection is locked and cannot be changed.`}
+            </Text>
+            <View style={s.dialogBtns}>
+              <TouchableOpacity style={s.dialogCancel} onPress={() => setConfirmVisible(false)}>
+                <Text style={s.dialogCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={s.dialogConfirm} onPress={doStart}>
+                <Text style={s.dialogConfirmText}>Start</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -246,5 +254,24 @@ const s = StyleSheet.create({
   footer: { padding: 16, borderTopWidth: 1, borderTopColor: '#e2e8f0', backgroundColor: '#fff' },
   startBtn: { backgroundColor: '#16a34a', borderRadius: 8, paddingVertical: 14, alignItems: 'center' },
   startBtnDisabled: { opacity: 0.4 },
-  startBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 }
+  startBtnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  overlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
+    zIndex: 100,
+  },
+  dialog: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 24,
+    width: '85%', maxWidth: 400,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 12, elevation: 8,
+  },
+  dialogTitle:   { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 10 },
+  dialogMsg:     { fontSize: 14, color: '#475569', lineHeight: 21, marginBottom: 24 },
+  dialogBtns:    { flexDirection: 'row', gap: 10 },
+  dialogCancel:  { flex: 1, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  dialogCancelText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
+  dialogConfirm: { flex: 1, backgroundColor: '#16a34a', borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  dialogConfirmText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 });

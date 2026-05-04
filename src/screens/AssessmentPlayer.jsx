@@ -446,6 +446,8 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
   const [submitting, setSubmitting] = useState(false);
+  const [leaveVisible, setLeaveVisible] = useState(false);
+  const leaveActionRef = useRef(null);
 
   // Persist answers and category index to AsyncStorage on every change
   useEffect(() => {
@@ -599,21 +601,8 @@ export default function AssessmentPlayer({ route, navigation }) {
     const unsub = navigation.addListener('beforeRemove', (e) => {
       if (e.data.action.type !== 'GO_BACK' && e.data.action.type !== 'POP') return;
       e.preventDefault();
-      const action = e.data.action;
-      if (Platform.OS === 'web') {
-        if (window.confirm('Leave Assessment?\n\nYour answers are saved. You can return to this assessment from the home screen.')) {
-          navigation.dispatch(action);
-        }
-      } else {
-        Alert.alert(
-          'Leave Assessment?',
-          'Your answers are saved. You can return to this assessment from the home screen.',
-          [
-            { text: 'Stay', style: 'cancel' },
-            { text: 'Leave', style: 'destructive', onPress: () => navigation.dispatch(action) },
-          ]
-        );
-      }
+      leaveActionRef.current = e.data.action;
+      setLeaveVisible(true);
     });
     return unsub;
   }, [navigation]);
@@ -926,6 +915,26 @@ export default function AssessmentPlayer({ route, navigation }) {
           )}
         </View>
       </ScrollView>
+
+      {/* ── Leave confirmation modal ── */}
+      {leaveVisible && (
+        <View style={styles.overlay}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>Leave Assessment?</Text>
+            <Text style={styles.dialogMsg}>
+              Your answers are saved. You can return to this assessment from the home screen.
+            </Text>
+            <View style={styles.dialogBtns}>
+              <TouchableOpacity style={styles.dialogCancel} onPress={() => setLeaveVisible(false)}>
+                <Text style={styles.dialogCancelText}>Stay</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dialogLeave} onPress={() => { setLeaveVisible(false); navigation.dispatch(leaveActionRef.current); }}>
+                <Text style={styles.dialogLeaveText}>Leave</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -1172,4 +1181,23 @@ const styles = StyleSheet.create({
   skuFieldHint: {
     fontWeight: '400', color: '#64748b',
   },
+
+  overlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center',
+    zIndex: 100,
+  },
+  dialog: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 24,
+    width: '85%', maxWidth: 400,
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2, shadowRadius: 12, elevation: 8,
+  },
+  dialogTitle:      { fontSize: 17, fontWeight: '700', color: '#0f172a', marginBottom: 10 },
+  dialogMsg:        { fontSize: 14, color: '#475569', lineHeight: 21, marginBottom: 24 },
+  dialogBtns:       { flexDirection: 'row', gap: 10 },
+  dialogCancel:     { flex: 1, borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  dialogCancelText: { color: '#64748b', fontWeight: '600', fontSize: 14 },
+  dialogLeave:      { flex: 1, backgroundColor: '#dc2626', borderRadius: 8, paddingVertical: 11, alignItems: 'center' },
+  dialogLeaveText:  { color: '#fff', fontWeight: '700', fontSize: 14 },
 });
