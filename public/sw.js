@@ -1,4 +1,4 @@
-const CACHE = 'sn-assessment-v3';
+const CACHE = 'sn-assessment-v4';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
