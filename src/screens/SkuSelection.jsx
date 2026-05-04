@@ -38,12 +38,14 @@ export default function SkuSelection({ navigation }) {
         return;
       }
 
-      // Restore draft selection if available
+      // Restore draft selection if available and non-empty
       const draft = await assessmentStore.loadSkuDraft();
-      if (draft) {
+      const draftHasContent = draft && (draft.assessing.length > 0 || draft.skipped.length > 0);
+      if (draftHasContent) {
         setAssessing(draft.assessing);
         setSkipped(draft.skipped);
-      } else if (!assessment) {
+      } else {
+        // No draft or empty draft (e.g. leftover from a bug) — use the assessment's SKUs
         setAssessing(extractSkus(stored));
       }
       setReady(true);
