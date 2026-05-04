@@ -7,6 +7,7 @@ import MyAssessments from '../screens/MyAssessments';
 import SkuSelection from '../screens/SkuSelection';
 import AssessmentPlayer from '../screens/AssessmentPlayer';
 import SubmissionSuccess from '../screens/SubmissionSuccess';
+import ErrorScreen from '../screens/ErrorScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -70,6 +71,11 @@ export default function AppNavigator() {
           name="SubmissionSuccess"
           component={SubmissionSuccess}
           options={{ title: 'Submitted', headerBackVisible: false }}
+        />
+        <Stack.Screen
+          name="Error"
+          component={ErrorScreen}
+          options={{ title: 'Error', headerBackVisible: false }}
         />
       </Stack.Navigator>
     </NavigationContainer>

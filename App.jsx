@@ -69,11 +69,17 @@ function handleDeepLink(url) {
         await assessmentStore.set(payload, instanceSysId);
         navigationRef.navigate('SkuSelection');
       } catch (e) {
-        navigationRef.navigate('MyAssessments', { deepLinkError: e.message });
+        navigateToError(e.message);
       }
     };
 
     tryNavigate();
+  }
+}
+
+function navigateToError(message) {
+  if (navigationRef.isReady()) {
+    navigationRef.navigate('Error', { message });
   }
 }
 
@@ -82,7 +88,7 @@ export default function App() {
 
   useEffect(() => {
     // Silently fetch OAuth token on startup so it's ready before any API call
-    initAuth();
+    initAuth().catch(e => navigateToError(e.message));
   }, []);
 
   useEffect(() => {
