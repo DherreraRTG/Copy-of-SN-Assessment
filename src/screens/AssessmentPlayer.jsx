@@ -213,6 +213,18 @@ function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
   const { datatype, choices, name, question: questionText, mandatory } = question;
   const [inputHeight, setInputHeight] = React.useState(80);
   const inputHeightRef = React.useRef(80);
+  const webInputRef = React.useRef(null);
+
+  // On web, auto-resize by reading scrollHeight imperatively — no setState loop
+  React.useEffect(() => {
+    if (Platform.OS !== 'web' || datatype !== 'string') return;
+    const el = webInputRef.current;
+    if (!el) return;
+    const node = el._node || el; // RN Web wraps the DOM element
+    if (!node || !node.style) return;
+    node.style.height = 'auto';
+    node.style.height = Math.max(80, node.scrollHeight) + 'px';
+  }, [value, datatype]);
 
   const label = questionText || name;
 
@@ -336,11 +348,12 @@ function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
         {mandatory && <Text style={styles.required}> *</Text>}
       </Text>
       <TextInput
-        style={[styles.textInput, datatype === 'string' && { minHeight: inputHeight }]}
+        ref={Platform.OS === 'web' && datatype === 'string' ? webInputRef : undefined}
+        style={[styles.textInput, datatype === 'string' && { minHeight: Platform.OS === 'web' ? 80 : inputHeight }]}
         value={value || ''}
         onChangeText={onChange}
         multiline={datatype === 'string'}
-        onContentSizeChange={datatype === 'string'
+        onContentSizeChange={datatype === 'string' && Platform.OS !== 'web'
           ? (e) => {
               const h = Math.max(80, e.nativeEvent.contentSize.height + 16);
               if (h !== inputHeightRef.current) {
