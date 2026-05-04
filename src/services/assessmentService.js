@@ -10,61 +10,14 @@ const REFRESH_KEY  = 'sn_oauth_refresh';
 
 // ─── Token management ────────────────────────────────────────────────────────
 
-async function fetchNewToken() {
-  const { snClientId, snClientSecret, snUsername, snPassword } = Constants.expoConfig?.extra || {};
-
-  const body = new URLSearchParams({
-    grant_type:    'password',
-    client_id:     snClientId,
-    client_secret: snClientSecret,
-    username:      snUsername,
-    password:      snPassword,
-  });
-
-  const res = await fetch(`${BASE_URL}/oauth_token.do`, {
+async function callTokenProxy(body) {
+  const res = await fetch('/api/token', {
     method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    body.toString(),
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify(body),
   });
-
-  if (!res.ok) throw new Error(`OAuth token fetch failed: ${res.status}`);
-
   const json = await res.json();
-  if (json.error) throw new Error(json.error_description || json.error);
-
-  const expiresAt = Date.now() + (json.expires_in - 60) * 1000; // 60s buffer
-  await AsyncStorage.multiSet([
-    [TOKEN_KEY,   json.access_token],
-    [EXPIRY_KEY,  String(expiresAt)],
-    ...(json.refresh_token ? [[REFRESH_KEY, json.refresh_token]] : []),
-  ]);
-
-  return json.access_token;
-}
-
-async function refreshToken() {
-  const refresh = await AsyncStorage.getItem(REFRESH_KEY);
-  if (!refresh) throw new Error('No refresh token');
-
-  const { snClientId, snClientSecret } = Constants.expoConfig?.extra || {};
-
-  const body = new URLSearchParams({
-    grant_type:    'refresh_token',
-    client_id:     snClientId,
-    client_secret: snClientSecret,
-    refresh_token: refresh,
-  });
-
-  const res = await fetch(`${BASE_URL}/oauth_token.do`, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body:    body.toString(),
-  });
-
-  if (!res.ok) throw new Error('Refresh failed');
-
-  const json = await res.json();
-  if (json.error) throw new Error(json.error_description || json.error);
+  if (!res.ok || json.error) throw new Error(json.error || 'Auth failed');
 
   const expiresAt = Date.now() + (json.expires_in - 60) * 1000;
   await AsyncStorage.multiSet([
@@ -72,8 +25,17 @@ async function refreshToken() {
     [EXPIRY_KEY, String(expiresAt)],
     ...(json.refresh_token ? [[REFRESH_KEY, json.refresh_token]] : []),
   ]);
-
   return json.access_token;
+}
+
+async function fetchNewToken() {
+  return callTokenProxy({});
+}
+
+async function refreshToken() {
+  const refresh = await AsyncStorage.getItem(REFRESH_KEY);
+  if (!refresh) throw new Error('No refresh token');
+  return callTokenProxy({ refresh_token: refresh });
 }
 
 async function getValidToken() {

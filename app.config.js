@@ -36,10 +36,6 @@ module.exports = {
     platforms: ['ios', 'android', 'web'],
     extra: {
       snInstance: process.env.SN_INSTANCE || 'https://roomstogodev.service-now.com',
-      snClientId: process.env.SN_CLIENT_ID || '',
-      snClientSecret: process.env.SN_CLIENT_SECRET || '',
-      snUsername: process.env.SN_USERNAME || '',
-      snPassword: process.env.SN_PASSWORD || '',
       apiScope: 'x_rtg_npm',
       eas: {
         projectId: '44f845ff-f733-4614-a979-12397e639161',
