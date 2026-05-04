@@ -484,6 +484,7 @@ export default function AssessmentPlayer({ route, navigation }) {
   const [submitting, setSubmitting] = useState(false);
   const [leaveVisible, setLeaveVisible] = useState(false);
   const leaveActionRef = useRef(null);
+  const [uploadProgress, setUploadProgress] = useState(null); // { done, total } | null
 
   // Persist answers and category index to AsyncStorage on every change
   useEffect(() => {
@@ -830,21 +831,28 @@ export default function AssessmentPlayer({ route, navigation }) {
     try {
       const result = await submitAssessment(submitBody);
 
-      // Upload each attachment sequentially — wait for each to confirm before proceeding
+      // Upload all attachments in parallel, tracking progress and collecting failures
       if (attachmentAnswers.length > 0 && instanceId) {
+        setUploadProgress({ done: 0, total: attachmentAnswers.length });
+        let done = 0;
         const failed = [];
-        for (let i = 0; i < attachmentAnswers.length; i++) {
-          const { metricID, base64 } = attachmentAnswers[i];
-          try {
-            await uploadAttachment(instanceId, metricID, base64);
-          } catch {
-            failed.push(i + 1);
-          }
-        }
+        await Promise.all(
+          attachmentAnswers.map(async ({ metricID, base64 }, i) => {
+            try {
+              await uploadAttachment(instanceId, metricID, base64);
+            } catch {
+              failed.push(i + 1);
+            } finally {
+              done++;
+              setUploadProgress({ done, total: attachmentAnswers.length });
+            }
+          })
+        );
+        setUploadProgress(null);
         if (failed.length > 0) {
           throw new Error(
-            `${failed.length} of ${attachmentAnswers.length} attachment(s) failed to upload (photo${failed.length > 1 ? 's' : ''} ${failed.join(', ')}). ` +
-            `The assessment answers were saved. Please check your connection and try again.`
+            `${failed.length} of ${attachmentAnswers.length} photo(s) failed to upload. ` +
+            `Answers are saved — check your connection and try again.`
           );
         }
       }
@@ -966,7 +974,11 @@ export default function AssessmentPlayer({ route, navigation }) {
               disabled={submitting}
             >
               {submitting
-                ? <ActivityIndicator color="#fff" size="small" />
+                ? uploadProgress
+                  ? <Text style={styles.submitBtnText}>
+                      Uploading {uploadProgress.done} / {uploadProgress.total} photos…
+                    </Text>
+                  : <ActivityIndicator color="#fff" size="small" />
                 : <Text style={styles.submitBtnText}>
                     {allComplete ? 'Submit Assessment' : 'Submit Assessment (*)'}
                   </Text>
