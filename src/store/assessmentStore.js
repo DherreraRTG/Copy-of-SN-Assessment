@@ -105,15 +105,23 @@ export const assessmentStore = {
     try {
       const id = _instanceId || await AsyncStorage.getItem(KEY_CURRENT);
       if (!id) return;
+      const serialized = JSON.stringify(answers);
       try {
-        await AsyncStorage.setItem(keys(id).answers, JSON.stringify(answers));
+        await AsyncStorage.setItem(keys(id).answers, serialized);
       } catch (e) {
         if (e.name === 'QuotaExceededError' || e.message?.includes('quota') || e.message?.includes('exceeded')) {
           await assessmentStore._purgeStale(id);
-          await AsyncStorage.setItem(keys(id).answers, JSON.stringify(answers));
+          try {
+            await AsyncStorage.setItem(keys(id).answers, serialized);
+          } catch {
+            // Still too large after purge — signal caller
+            throw new Error('QUOTA_EXCEEDED');
+          }
         }
       }
-    } catch (_) {}
+    } catch (e) {
+      if (e.message === 'QUOTA_EXCEEDED') throw e;
+    }
   },
 
   loadAnswers: async () => {

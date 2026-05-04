@@ -49,6 +49,22 @@ async function setCached(instanceSysId, data) {
 // Web file input (rendered via DOM)
 // ─────────────────────────────────────────────
 
+function compressImage(dataUrl, maxWidth = 1200, quality = 0.75) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if (width > maxWidth) { height = Math.round(height * maxWidth / width); width = maxWidth; }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', quality));
+    };
+    img.onerror = () => resolve(dataUrl); // fallback: keep original
+    img.src = dataUrl;
+  });
+}
+
 function WebFileInput({ value, onChange }) {
   const inputRef = React.useRef(null);
   const files = Array.isArray(value) ? value : (value && typeof value === 'string' && value.startsWith('data:') ? [value] : []);
@@ -60,8 +76,11 @@ function WebFileInput({ value, onChange }) {
     let done = 0;
     selected.forEach((file, i) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        results[i] = reader.result;
+      reader.onload = async () => {
+        const compressed = file.type.startsWith('image/')
+          ? await compressImage(reader.result)
+          : reader.result;
+        results[i] = compressed;
         done++;
         if (done === selected.length) {
           onChange([...files, ...results]);
@@ -461,7 +480,15 @@ export default function AssessmentPlayer({ route, navigation }) {
   // Persist answers and category index to AsyncStorage on every change
   useEffect(() => {
     if (Object.keys(answers).length === 0) return;
-    assessmentStore.saveAnswers(answers);
+    assessmentStore.saveAnswers(answers).catch(e => {
+      if (e?.message === 'QUOTA_EXCEEDED') {
+        if (Platform.OS === 'web') {
+          window.alert('Storage full — your last photo could not be saved. Submit what you have or remove some photos to continue.');
+        } else {
+          Alert.alert('Storage Full', 'Your last photo could not be saved. Submit what you have or remove some photos to continue.');
+        }
+      }
+    });
   }, [answers]);
 
   useEffect(() => {
@@ -549,7 +576,7 @@ export default function AssessmentPlayer({ route, navigation }) {
     }
 
     load();
-  }, [instanceSysId, isOnline]);
+  }, [instanceSysId]);
 
   async function prefillAnswers(data) {
     const prefilled = {};
