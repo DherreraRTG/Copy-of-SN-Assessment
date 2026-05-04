@@ -1,9 +1,20 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, ActivityIndicator, Alert
+  StyleSheet, ActivityIndicator, Alert, Platform
 } from 'react-native';
 import { assessmentStore } from '../store/assessmentStore';
+
+function confirmAlert(title, message, onConfirm) {
+  if (Platform.OS === 'web') {
+    if (window.confirm(`${title}\n\n${message}`)) onConfirm();
+  } else {
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Start', style: 'default', onPress: onConfirm },
+    ]);
+  }
+}
 
 function extractSkus(assessment) {
   if (assessment.available_skus?.length) return assessment.available_skus;
@@ -82,20 +93,13 @@ export default function SkuSelection({ navigation }) {
 
   function handleStart() {
     const count = assessing.length;
-    Alert.alert(
+    confirmAlert(
       'Start Assessment?',
       `You're about to start with ${count} SKU${count !== 1 ? 's' : ''}. Once started, your SKU selection is locked and cannot be changed.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Start',
-          style: 'default',
-          onPress: async () => {
-            await assessmentStore.saveSkus(assessing);
-            navigation.replace('AssessmentPlayer');
-          },
-        },
-      ]
+      async () => {
+        await assessmentStore.saveSkus(assessing);
+        navigation.replace('AssessmentPlayer');
+      }
     );
   }
 

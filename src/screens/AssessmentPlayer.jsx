@@ -599,14 +599,21 @@ export default function AssessmentPlayer({ route, navigation }) {
     const unsub = navigation.addListener('beforeRemove', (e) => {
       if (e.data.action.type !== 'GO_BACK' && e.data.action.type !== 'POP') return;
       e.preventDefault();
-      Alert.alert(
-        'Leave Assessment?',
-        'Your answers are saved. You can return to this assessment from the home screen.',
-        [
-          { text: 'Stay', style: 'cancel' },
-          { text: 'Leave', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
-        ]
-      );
+      const action = e.data.action;
+      if (Platform.OS === 'web') {
+        if (window.confirm('Leave Assessment?\n\nYour answers are saved. You can return to this assessment from the home screen.')) {
+          navigation.dispatch(action);
+        }
+      } else {
+        Alert.alert(
+          'Leave Assessment?',
+          'Your answers are saved. You can return to this assessment from the home screen.',
+          [
+            { text: 'Stay', style: 'cancel' },
+            { text: 'Leave', style: 'destructive', onPress: () => navigation.dispatch(action) },
+          ]
+        );
+      }
     });
     return unsub;
   }, [navigation]);
