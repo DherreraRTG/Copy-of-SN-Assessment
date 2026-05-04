@@ -54,14 +54,22 @@ function WebFileInput({ value, onChange }) {
   const files = Array.isArray(value) ? value : (value && typeof value === 'string' && value.startsWith('data:') ? [value] : []);
 
   const handleChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      onChange([...files, reader.result]);
-      e.target.value = '';
-    };
-    reader.readAsDataURL(file);
+    const selected = Array.from(e.target.files);
+    if (!selected.length) return;
+    const results = [];
+    let done = 0;
+    selected.forEach((file, i) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        results[i] = reader.result;
+        done++;
+        if (done === selected.length) {
+          onChange([...files, ...results]);
+          e.target.value = '';
+        }
+      };
+      reader.readAsDataURL(file);
+    });
   };
 
   const remove = (idx) => onChange(files.filter((_, i) => i !== idx));
@@ -85,6 +93,7 @@ function WebFileInput({ value, onChange }) {
       ref: inputRef,
       type: 'file',
       accept: 'image/*,application/pdf',
+      multiple: true,
       onChange: handleChange,
       style: { display: 'none' },
     }),
