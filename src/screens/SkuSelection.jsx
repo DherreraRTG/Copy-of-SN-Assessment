@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, ActivityIndicator
+  StyleSheet, ActivityIndicator, Alert
 } from 'react-native';
 import { assessmentStore } from '../store/assessmentStore';
 
@@ -80,9 +80,23 @@ export default function SkuSelection({ navigation }) {
     setHiSkip([]);
   }
 
-  async function handleStart() {
-    await assessmentStore.saveSkus(assessing);
-    navigation.navigate('AssessmentPlayer');
+  function handleStart() {
+    const count = assessing.length;
+    Alert.alert(
+      'Start Assessment?',
+      `You're about to start with ${count} SKU${count !== 1 ? 's' : ''}. Once started, your SKU selection is locked and cannot be changed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Start',
+          style: 'default',
+          onPress: async () => {
+            await assessmentStore.saveSkus(assessing);
+            navigation.navigate('AssessmentPlayer');
+          },
+        },
+      ]
+    );
   }
 
   if (!assessment) {
@@ -103,7 +117,7 @@ export default function SkuSelection({ navigation }) {
           Remove any SKUs you won't be assessing today.
         </Text>
         {description ? (
-          <Text style={s.desc} numberOfLines={4}>{description}</Text>
+          <Text style={s.desc}>{description}</Text>
         ) : null}
       </View>
 

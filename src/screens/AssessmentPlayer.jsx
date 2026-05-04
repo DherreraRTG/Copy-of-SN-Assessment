@@ -594,6 +594,21 @@ export default function AssessmentPlayer({ route, navigation }) {
     }
   }, [payload]);
 
+  // ── Block back navigation to SKU selection ─────────────
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      // Allow forward navigation (submit/success/error)
+      if (e.data.action.type !== 'GO_BACK' && e.data.action.type !== 'POP') return;
+      e.preventDefault();
+      Alert.alert(
+        'SKU Selection Locked',
+        'Your SKU selection is locked. You cannot go back and change it once the assessment has started.',
+        [{ text: 'OK' }]
+      );
+    });
+    return unsub;
+  }, [navigation]);
+
   // ── Dependency resolution ──────────────────────────────
   function isVisible(question, categoryQuestions) {
     // Category gating: if "Do you want to complete this category?" is "No",
