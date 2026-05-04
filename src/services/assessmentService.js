@@ -7,6 +7,7 @@ const API_BASE = `${BASE_URL}/api/x_rtg_npm/offline_assessment`;
 const TOKEN_KEY    = 'sn_oauth_token';
 const EXPIRY_KEY   = 'sn_oauth_expiry';
 const REFRESH_KEY  = 'sn_oauth_refresh';
+const SCHEME_KEY   = 'sn_oauth_scheme';
 
 // ─── Token management ────────────────────────────────────────────────────────
 
@@ -23,6 +24,7 @@ async function callTokenProxy(body) {
   await AsyncStorage.multiSet([
     [TOKEN_KEY,  json.access_token],
     [EXPIRY_KEY, String(expiresAt)],
+    [SCHEME_KEY, json.scheme || 'Bearer'],
     ...(json.refresh_token ? [[REFRESH_KEY, json.refresh_token]] : []),
   ]);
   return json.access_token;
@@ -51,7 +53,8 @@ async function getValidToken() {
 
 async function getAuthHeaders() {
   const token = await getValidToken();
-  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
+  return { 'Content-Type': 'application/json', 'Authorization': `${scheme} ${token}` };
 }
 
 // Fetch wrapper with automatic 401 retry after token refresh
@@ -59,7 +62,8 @@ async function apiFetch(url, options, retried = false) {
   const res = await fetch(url, options);
   if (res.status === 401 && !retried) {
     const token = await fetchNewToken();
-    const headers = { ...options.headers, Authorization: `Bearer ${token}` };
+    const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
+    const headers = { ...options.headers, Authorization: `${scheme} ${token}` };
     return apiFetch(url, { ...options, headers }, true);
   }
   return res;
