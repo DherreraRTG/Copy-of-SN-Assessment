@@ -49,7 +49,7 @@ async function setCached(instanceSysId, data) {
 // Web file input (rendered via DOM)
 // ─────────────────────────────────────────────
 
-function compressImage(dataUrl, maxWidth = 1200, quality = 0.75) {
+function compressImage(dataUrl, maxWidth = 900, targetKB = 50) {
   return new Promise((resolve) => {
     const img = new Image();
     img.onload = () => {
@@ -58,9 +58,17 @@ function compressImage(dataUrl, maxWidth = 1200, quality = 0.75) {
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      resolve(canvas.toDataURL('image/jpeg', quality));
+      // base64 is ~37% larger than binary, so target = targetKB * 1024 * 1.37
+      const maxLen = targetKB * 1024 * 1.37;
+      let quality = 0.7;
+      let result = canvas.toDataURL('image/jpeg', quality);
+      while (result.length > maxLen && quality > 0.2) {
+        quality = Math.round((quality - 0.1) * 10) / 10;
+        result = canvas.toDataURL('image/jpeg', quality);
+      }
+      resolve(result);
     };
-    img.onerror = () => resolve(dataUrl); // fallback: keep original
+    img.onerror = () => resolve(dataUrl);
     img.src = dataUrl;
   });
 }
