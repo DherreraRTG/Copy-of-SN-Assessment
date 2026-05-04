@@ -594,16 +594,18 @@ export default function AssessmentPlayer({ route, navigation }) {
     }
   }, [payload]);
 
-  // ── Block back navigation to SKU selection ─────────────
+  // ── Warn before leaving with unsaved answers ───────────
   useEffect(() => {
     const unsub = navigation.addListener('beforeRemove', (e) => {
-      // Allow forward navigation (submit/success/error)
       if (e.data.action.type !== 'GO_BACK' && e.data.action.type !== 'POP') return;
       e.preventDefault();
       Alert.alert(
-        'SKU Selection Locked',
-        'Your SKU selection is locked. You cannot go back and change it once the assessment has started.',
-        [{ text: 'OK' }]
+        'Leave Assessment?',
+        'Your answers are saved. You can return to this assessment from the home screen.',
+        [
+          { text: 'Stay', style: 'cancel' },
+          { text: 'Leave', style: 'destructive', onPress: () => navigation.dispatch(e.data.action) },
+        ]
       );
     });
     return unsub;

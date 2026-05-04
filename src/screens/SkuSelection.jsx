@@ -92,7 +92,7 @@ export default function SkuSelection({ navigation }) {
           style: 'default',
           onPress: async () => {
             await assessmentStore.saveSkus(assessing);
-            navigation.navigate('AssessmentPlayer');
+            navigation.replace('AssessmentPlayer');
           },
         },
       ]
