@@ -1,14 +1,22 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { useState } from 'react';
 
 export default function SubmissionSuccess({ route, navigation }) {
   const { instanceNumber, answered, skipped, queued, submittedAt } = route.params || {};
+  const [closeFailed, setCloseFailed] = useState(false);
 
   const time = submittedAt
     ? new Date(submittedAt).toLocaleString()
     : new Date().toLocaleString();
 
-  function goHome() {
-    navigation.reset({ index: 0, routes: [{ name: 'MyAssessments' }] });
+  function handleClose() {
+    if (Platform.OS === 'web') {
+      window.close();
+      // If still here after 300ms, the browser blocked it
+      setTimeout(() => setCloseFailed(true), 300);
+    } else {
+      navigation.reset({ index: 0, routes: [{ name: 'MyAssessments' }] });
+    }
   }
 
   return (
@@ -34,9 +42,13 @@ export default function SubmissionSuccess({ route, navigation }) {
 
         <View style={s.divider} />
 
-        <TouchableOpacity style={[s.btn, queued && s.btnQueued]} onPress={goHome}>
-          <Text style={s.btnText}>Return to Home</Text>
-        </TouchableOpacity>
+        {closeFailed ? (
+          <Text style={s.closeHint}>You can now close this tab.</Text>
+        ) : (
+          <TouchableOpacity style={[s.btn, queued && s.btnQueued]} onPress={handleClose}>
+            <Text style={s.btnText}>Close Window</Text>
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );
@@ -89,4 +101,5 @@ const s = StyleSheet.create({
   },
   btnQueued: { backgroundColor: '#ca8a04' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  closeHint: { marginTop: 4, fontSize: 14, color: '#64748b', textAlign: 'center' },
 });
