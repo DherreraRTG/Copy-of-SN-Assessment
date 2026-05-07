@@ -879,7 +879,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       });
     } catch (e) {
       const msg = e.message || '';
-      const isOffline = msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || (Platform.OS === 'web' && !navigator.onLine);
+      const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed') || msg.includes('fetch');
 
       if (isOffline) {
         // Queue locally — sync manager will submit + complete when back online
