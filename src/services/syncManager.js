@@ -40,21 +40,28 @@ class SyncManager {
       const result = await submitAssessment(item.payload);
       const instanceId = item.payload.instance_sys_id || result?.body?.instance_sys_id;
 
-      // Load attachment answers from assessmentStore (not duplicated in queue item)
-      if (instanceId && item.storeInstanceId) {
-        const savedAnswers = await assessmentStore.loadAnswersByInstanceId(item.storeInstanceId);
-        if (savedAnswers) {
-          const attachmentEntries = Object.entries(savedAnswers).flatMap(([metricID, val]) => {
-            const files = Array.isArray(val) ? val : (typeof val === 'string' && val.startsWith('data:') ? [val] : []);
-            return files.map(base64 => ({ metricID, base64 }));
-          });
-          await Promise.all(
-            attachmentEntries.map(({ metricID, base64 }) =>
-              uploadAttachment(instanceId, metricID, base64).catch(() => {})
-            )
-          );
+      // Upload attachments — new queue entries carry them inline; old entries fall back to the store.
+      if (instanceId) {
+        let attachmentEntries = item.attachments || [];
+        if (!attachmentEntries.length && item.storeInstanceId) {
+          const savedAnswers = await assessmentStore.loadAnswersByInstanceId(item.storeInstanceId);
+          if (savedAnswers) {
+            attachmentEntries = Object.entries(savedAnswers).flatMap(([metricID, val]) => {
+              const files = Array.isArray(val) ? val : (typeof val === 'string' && val.startsWith('data:') ? [val] : []);
+              return files.map(base64 => ({ metricID, base64 }));
+            });
+          }
+          await assessmentStore.clearByInstanceId(item.storeInstanceId);
         }
-        await assessmentStore.clearByInstanceId(item.storeInstanceId);
+        await Promise.all(
+          attachmentEntries.map(({ metricID, base64 }) =>
+            uploadAttachment(instanceId, metricID, base64).catch(() => {})
+          )
+        );
+        // Clean up store for new-format entries (storeInstanceId not present)
+        if (!item.storeInstanceId) {
+          await assessmentStore.clearByInstanceId(instanceId);
+        }
       }
 
       if (instanceId) await completeAssessment(instanceId);

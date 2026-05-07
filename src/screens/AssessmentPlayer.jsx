@@ -486,6 +486,7 @@ export default function AssessmentPlayer({ route, navigation }) {
   const [leaveVisible, setLeaveVisible] = useState(false);
   const leaveActionRef = useRef(null);
   const [uploadProgress, setUploadProgress] = useState(null); // { done, total } | null
+  const categoryHydrated = useRef(false);
 
   // Persist answers and category index to AsyncStorage on every change
   useEffect(() => {
@@ -502,6 +503,7 @@ export default function AssessmentPlayer({ route, navigation }) {
   }, [answers]);
 
   useEffect(() => {
+    if (!categoryHydrated.current) return;
     assessmentStore.saveCategoryIndex(activeCategoryIndex);
   }, [activeCategoryIndex]);
 
@@ -632,6 +634,7 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     if (loadedSkus && loadedSkus.length > 0) setSessionSkus(loadedSkus);
     setAnswers(finalAnswers);
+    categoryHydrated.current = true;
     if (savedIndex > 0) setActiveCategoryIndex(savedIndex);
   }
 
@@ -882,17 +885,14 @@ export default function AssessmentPlayer({ route, navigation }) {
       const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed') || msg.includes('fetch');
 
       if (isOffline) {
-        // Queue locally — don't duplicate attachment base64 data that's already in
-        // assessmentStore. Store a reference; syncManager reloads attachments from there.
         const queueId = preKnownInstanceId || `offline_${Date.now()}`;
-        await assessmentStore._purgeStale(preKnownInstanceId);
         await saveResponse(queueId, {
           status: 'pending',
           payload: submitBody,
-          storeInstanceId: preKnownInstanceId,
+          attachments: attachmentAnswers,
           submittedAt,
         });
-        // Don't clear assessmentStore — syncManager needs it to upload attachments
+        // Keep assessmentStore alive so the assessment remains resumable while sync is pending
         navigation.replace('SubmissionSuccess', {
           instanceNumber: null,
           answered: null,
