@@ -135,14 +135,24 @@ export async function submitAssessment(payload) {
 
 export async function completeAssessment(instanceSysId) {
   const headers = await getAuthHeaders();
-  const res = await apiFetch(`${API_BASE}/complete`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ instance_sys_id: instanceSysId }),
-  });
-  if (!res.ok) throw new Error(`Complete failed: ${res.status}`);
-  const json = await res.json();
-  return json.result || json;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+  try {
+    const res = await apiFetch(`${API_BASE}/complete`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ instance_sys_id: instanceSysId }),
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Complete failed: ${res.status}`);
+    const json = await res.json();
+    return json.result || json;
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error('Complete timed out');
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function uploadAttachment(instanceSysId, metricSysId, base64Data) {
