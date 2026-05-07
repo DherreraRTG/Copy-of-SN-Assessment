@@ -882,15 +882,17 @@ export default function AssessmentPlayer({ route, navigation }) {
       const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed') || msg.includes('fetch');
 
       if (isOffline) {
-        // Queue locally — sync manager will submit + complete when back online
+        // Queue locally — don't duplicate attachment base64 data that's already in
+        // assessmentStore. Store a reference; syncManager reloads attachments from there.
         const queueId = preKnownInstanceId || `offline_${Date.now()}`;
+        await assessmentStore._purgeStale(preKnownInstanceId);
         await saveResponse(queueId, {
           status: 'pending',
           payload: submitBody,
-          attachmentAnswers,
+          storeInstanceId: preKnownInstanceId,
           submittedAt,
         });
-        await assessmentStore.clear();
+        // Don't clear assessmentStore — syncManager needs it to upload attachments
         navigation.replace('SubmissionSuccess', {
           instanceNumber: null,
           answered: null,
@@ -901,17 +903,23 @@ export default function AssessmentPlayer({ route, navigation }) {
         return;
       }
 
-      const isCompleteFailure = msg.includes('Complete failed') || msg.includes('complete');
-      const userMsg = isCompleteFailure
-        ? 'Answers submitted successfully, but the assessment could not be finalized. It will retry automatically when you reconnect.'
-        : `Submission failed: ${msg || 'Please check your connection and try again.'}`;
+      const isCompleteFailure = msg.toLowerCase().includes('complete');
+      if (isCompleteFailure) {
+        // Answers are in SN — pending complete is already saved and will retry on next open
+        await assessmentStore.clear();
+        navigation.replace('SubmissionSuccess', {
+          instanceNumber: null,
+          answered: null,
+          skipped: null,
+          submittedAt,
+        });
+        return;
+      }
+      const userMsg = `Submission failed: ${msg || 'Please check your connection and try again.'}`;
       if (Platform.OS === 'web') {
         window.alert(userMsg);
       } else {
-        Alert.alert(
-          isCompleteFailure ? 'Almost Done' : 'Submission Failed',
-          userMsg
-        );
+        Alert.alert('Submission Failed', userMsg);
       }
     } finally {
       setSubmitting(false);

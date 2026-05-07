@@ -1,5 +1,6 @@
 import { getPendingResponses, updateResponse, removeFromQueue } from '../db';
 import { submitAssessment, completeAssessment, uploadAttachment } from './assessmentService';
+import { assessmentStore } from '../store/assessmentStore';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 15000, 30000];
@@ -39,13 +40,21 @@ class SyncManager {
       const result = await submitAssessment(item.payload);
       const instanceId = item.payload.instance_sys_id || result?.body?.instance_sys_id;
 
-      // Upload any attachments that were queued offline
-      if (instanceId && item.attachmentAnswers?.length) {
-        await Promise.all(
-          item.attachmentAnswers.map(({ metricID, base64 }) =>
-            uploadAttachment(instanceId, metricID, base64).catch(() => {})
-          )
-        );
+      // Load attachment answers from assessmentStore (not duplicated in queue item)
+      if (instanceId && item.storeInstanceId) {
+        const savedAnswers = await assessmentStore.loadAnswersByInstanceId(item.storeInstanceId);
+        if (savedAnswers) {
+          const attachmentEntries = Object.entries(savedAnswers).flatMap(([metricID, val]) => {
+            const files = Array.isArray(val) ? val : (typeof val === 'string' && val.startsWith('data:') ? [val] : []);
+            return files.map(base64 => ({ metricID, base64 }));
+          });
+          await Promise.all(
+            attachmentEntries.map(({ metricID, base64 }) =>
+              uploadAttachment(instanceId, metricID, base64).catch(() => {})
+            )
+          );
+        }
+        await assessmentStore.clearByInstanceId(item.storeInstanceId);
       }
 
       if (instanceId) await completeAssessment(instanceId);

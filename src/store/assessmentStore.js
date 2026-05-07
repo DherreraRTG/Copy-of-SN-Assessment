@@ -151,6 +151,22 @@ export const assessmentStore = {
     } catch (_) { return 0; }
   },
 
+  loadAnswersByInstanceId: async (id) => {
+    try {
+      if (!id) return null;
+      const s = await AsyncStorage.getItem(keys(id).answers);
+      return s ? JSON.parse(s) : null;
+    } catch (_) { return null; }
+  },
+
+  clearByInstanceId: async (id) => {
+    if (!id) return;
+    try {
+      const k = keys(id);
+      await AsyncStorage.multiRemove([KEY_CURRENT, k.payload, k.skus, k.answers, `sn_sku_draft_${id}`, `sn_catidx_${id}`]);
+    } catch (_) {}
+  },
+
   savePendingComplete: async (data) => {
     try {
       await AsyncStorage.setItem(KEY_PENDING_COMPLETE, JSON.stringify(data));
