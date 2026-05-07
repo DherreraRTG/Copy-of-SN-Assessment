@@ -1,5 +1,5 @@
 import { getPendingResponses, updateResponse, removeFromQueue } from '../db';
-import { submitAssessment } from './assessmentService';
+import { submitAssessment, completeAssessment } from './assessmentService';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 15000, 30000];
@@ -36,7 +36,9 @@ class SyncManager {
     this._notify();
 
     try {
-      await submitAssessment(item.payload);
+      const result = await submitAssessment(item.payload);
+      const instanceId = item.payload.instance_sys_id || result?.body?.instance_sys_id;
+      if (instanceId) await completeAssessment(instanceId);
       await removeFromQueue(item.sys_id);
     } catch (err) {
       const retries = (item.retry_count || 0) + 1;

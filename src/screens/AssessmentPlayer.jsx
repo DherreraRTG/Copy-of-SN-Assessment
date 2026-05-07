@@ -765,7 +765,7 @@ export default function AssessmentPlayer({ route, navigation }) {
   async function doSubmit() {
     if (!payload) return;
 
-    const instanceId = instanceSysId || payload.instance_sys_id;
+    const preKnownInstanceId = instanceSysId || payload.instance_sys_id;
     const metricTypeSysId = payload.sys_id;
     const submittedAt = new Date().toISOString();
 
@@ -820,7 +820,7 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     const submitBody = {
       metric_type_sys_id: metricTypeSysId,
-      instance_sys_id: instanceId,
+      instance_sys_id: preKnownInstanceId,
       task_sys_id: payload.task_sys_id || null,
       submitted_by: null,
       submitted_at: submittedAt,
@@ -830,6 +830,10 @@ export default function AssessmentPlayer({ route, navigation }) {
     setSubmitting(true);
     try {
       const result = await submitAssessment(submitBody);
+
+      // For fresh assessments (no pre-known instance), SN creates a new instance on submit —
+      // use the returned sys_id for all subsequent calls.
+      const instanceId = preKnownInstanceId || result?.body?.instance_sys_id;
 
       // Upload all attachments in parallel, tracking progress and collecting failures
       if (attachmentAnswers.length > 0 && instanceId) {
@@ -859,7 +863,10 @@ export default function AssessmentPlayer({ route, navigation }) {
 
       // Only mark the NP task closed-complete after all attachments confirmed uploaded
       if (instanceId) {
+        const instanceNumber = result?.body?.instance_number || instanceId;
+        await assessmentStore.savePendingComplete({ instanceId, submittedAt, instanceNumber });
         await completeAssessment(instanceId);
+        await assessmentStore.clearPendingComplete();
       }
 
       await assessmentStore.clear();
@@ -870,10 +877,18 @@ export default function AssessmentPlayer({ route, navigation }) {
         submittedAt,
       });
     } catch (e) {
+      const msg = e.message || '';
+      const isCompleteFailure = msg.includes('Complete failed') || msg.includes('complete');
+      const userMsg = isCompleteFailure
+        ? 'Answers submitted successfully, but the assessment could not be finalized. It will retry automatically when you reconnect.'
+        : `Submission failed: ${msg || 'Please check your connection and try again.'}`;
       if (Platform.OS === 'web') {
-        window.alert(`Submission failed: ${e.message || 'Please check your connection and try again.'}`);
+        window.alert(userMsg);
       } else {
-        Alert.alert('Submission Failed', e.message || 'Please check your connection and try again.');
+        Alert.alert(
+          isCompleteFailure ? 'Almost Done' : 'Submission Failed',
+          userMsg
+        );
       }
     } finally {
       setSubmitting(false);

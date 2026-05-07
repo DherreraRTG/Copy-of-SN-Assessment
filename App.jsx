@@ -18,7 +18,7 @@ if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator, { navigationRef } from './src/navigation';
-import { fetchAssessmentByInstance, initAuth } from './src/services/assessmentService';
+import { fetchAssessmentByInstance, initAuth, completeAssessment } from './src/services/assessmentService';
 import { assessmentStore } from './src/store/assessmentStore';
 
 /**
@@ -89,6 +89,18 @@ export default function App() {
   useEffect(() => {
     // Silently fetch OAuth token on startup so it's ready before any API call
     initAuth().catch(e => navigateToError(e.message));
+
+    // If a previous session submitted answers but failed to call /complete,
+    // retry it now that we're online.
+    async function retryPendingComplete() {
+      try {
+        const pending = await assessmentStore.loadPendingComplete();
+        if (!pending?.instanceId) return;
+        await completeAssessment(pending.instanceId);
+        await assessmentStore.clearPendingComplete();
+      } catch (_) {}
+    }
+    retryPendingComplete();
   }, []);
 
   useEffect(() => {

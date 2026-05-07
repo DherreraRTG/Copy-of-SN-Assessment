@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Points to the instance_sys_id of whoever last loaded an assessment on this device.
 const KEY_CURRENT = 'sn_current';
+const KEY_PENDING_COMPLETE = 'sn_pending_complete';
 
 let _payload    = null;
 let _instanceId = null;
@@ -148,6 +149,25 @@ export const assessmentStore = {
       const s = await AsyncStorage.getItem(`sn_catidx_${id}`);
       return s !== null ? parseInt(s, 10) : 0;
     } catch (_) { return 0; }
+  },
+
+  savePendingComplete: async (data) => {
+    try {
+      await AsyncStorage.setItem(KEY_PENDING_COMPLETE, JSON.stringify(data));
+    } catch (_) {}
+  },
+
+  loadPendingComplete: async () => {
+    try {
+      const s = await AsyncStorage.getItem(KEY_PENDING_COMPLETE);
+      return s ? JSON.parse(s) : null;
+    } catch (_) { return null; }
+  },
+
+  clearPendingComplete: async () => {
+    try {
+      await AsyncStorage.removeItem(KEY_PENDING_COMPLETE);
+    } catch (_) {}
   },
 
   // Wipe the current session (on submit or before loading a new assessment)

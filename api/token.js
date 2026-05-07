@@ -1,7 +1,22 @@
 import { Buffer } from 'buffer';
 
+// Simple in-memory rate limiter: max 10 token requests per IP per minute
+const _rlMap = new Map();
+function isRateLimited(ip) {
+  const now = Date.now();
+  const window = 60_000;
+  const max = 10;
+  const times = (_rlMap.get(ip) || []).filter(t => now - t < window);
+  if (times.length >= max) return true;
+  _rlMap.set(ip, [...times, now]);
+  return false;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).end();
+
+  const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
+  if (isRateLimited(ip)) return res.status(429).json({ error: 'Too many requests. Please wait and try again.' });
 
   const { SN_INSTANCE, SN_CLIENT_ID, SN_CLIENT_SECRET, SN_USERNAME, SN_PASSWORD } = process.env;
 

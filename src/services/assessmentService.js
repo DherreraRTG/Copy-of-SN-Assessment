@@ -61,10 +61,17 @@ async function getAuthHeaders() {
 async function apiFetch(url, options, retried = false) {
   const res = await fetch(url, options);
   if (res.status === 401 && !retried) {
-    const token = await fetchNewToken();
-    const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
-    const headers = { ...options.headers, Authorization: `${scheme} ${token}` };
-    return apiFetch(url, { ...options, headers }, true);
+    try {
+      const token = await fetchNewToken();
+      const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
+      const headers = { ...options.headers, Authorization: `${scheme} ${token}` };
+      return apiFetch(url, { ...options, headers }, true);
+    } catch {
+      throw new Error('Your session has expired. Please reconnect to the internet to re-authenticate.');
+    }
+  }
+  if (res.status === 401) {
+    throw new Error('Your session has expired. Please reconnect to the internet to re-authenticate.');
   }
   return res;
 }
