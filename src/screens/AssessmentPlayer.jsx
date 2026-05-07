@@ -882,7 +882,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       });
     } catch (e) {
       const msg = e.message || '';
-      const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed') || msg.includes('fetch');
+      const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed');
 
       if (isOffline) {
         const queueId = preKnownInstanceId || `offline_${Date.now()}`;
