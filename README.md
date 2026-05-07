@@ -1,4 +1,4 @@
-# SN Offline Assessment — Expo (React Native)
+# SN Offline Assessment
 
 Offline-capable mobile assessment app for ServiceNow. Generates APK (Android) or IPA (iOS) for MDM distribution.
 
