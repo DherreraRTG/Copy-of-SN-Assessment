@@ -98,13 +98,6 @@ export async function fetchAssessmentByInstance(instanceSysId) {
   return result.body ?? result;
 }
 
-export async function fetchMyAssessments() {
-  const headers = await getAuthHeaders();
-  const res = await apiFetch(`${API_BASE}/list`, { method: 'GET', headers });
-  if (!res.ok) throw new Error(`API error ${res.status}`);
-  const json = await res.json();
-  return json.result || json;
-}
 
 export async function submitAssessment(payload) {
   const headers = await getAuthHeaders();
