@@ -29,6 +29,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fetchAssessmentByInstance, submitAssessment, uploadAttachment, completeAssessment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
+import { saveResponse } from '../db';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -878,6 +879,28 @@ export default function AssessmentPlayer({ route, navigation }) {
       });
     } catch (e) {
       const msg = e.message || '';
+      const isOffline = msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || (Platform.OS === 'web' && !navigator.onLine);
+
+      if (isOffline) {
+        // Queue locally — sync manager will submit + complete when back online
+        const queueId = preKnownInstanceId || `offline_${Date.now()}`;
+        await saveResponse(queueId, {
+          status: 'pending',
+          payload: submitBody,
+          attachmentAnswers,
+          submittedAt,
+        });
+        await assessmentStore.clear();
+        navigation.replace('SubmissionSuccess', {
+          instanceNumber: null,
+          answered: null,
+          skipped: null,
+          submittedAt,
+          queued: true,
+        });
+        return;
+      }
+
       const isCompleteFailure = msg.includes('Complete failed') || msg.includes('complete');
       const userMsg = isCompleteFailure
         ? 'Answers submitted successfully, but the assessment could not be finalized. It will retry automatically when you reconnect.'

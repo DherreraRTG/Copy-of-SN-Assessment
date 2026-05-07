@@ -1,5 +1,5 @@
 import { getPendingResponses, updateResponse, removeFromQueue } from '../db';
-import { submitAssessment, completeAssessment } from './assessmentService';
+import { submitAssessment, completeAssessment, uploadAttachment } from './assessmentService';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 15000, 30000];
@@ -38,6 +38,16 @@ class SyncManager {
     try {
       const result = await submitAssessment(item.payload);
       const instanceId = item.payload.instance_sys_id || result?.body?.instance_sys_id;
+
+      // Upload any attachments that were queued offline
+      if (instanceId && item.attachmentAnswers?.length) {
+        await Promise.all(
+          item.attachmentAnswers.map(({ metricID, base64 }) =>
+            uploadAttachment(instanceId, metricID, base64).catch(() => {})
+          )
+        );
+      }
+
       if (instanceId) await completeAssessment(instanceId);
       await removeFromQueue(item.sys_id);
     } catch (err) {
