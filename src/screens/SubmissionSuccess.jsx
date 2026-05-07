@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native
 import { useState } from 'react';
 
 export default function SubmissionSuccess({ route, navigation }) {
-  const { instanceNumber, answered, skipped, queued, submittedAt } = route.params || {};
+  const { instanceNumber, answered, skipped, submittedAt } = route.params || {};
   const [closeFailed, setCloseFailed] = useState(false);
 
   const time = submittedAt
@@ -22,19 +22,13 @@ export default function SubmissionSuccess({ route, navigation }) {
   return (
     <View style={s.container}>
       <View style={s.card}>
-        <View style={[s.iconWrap, queued && s.iconWrapQueued]}>
-          <Text style={s.icon}>{queued ? '📋' : '✓'}</Text>
+        <View style={s.iconWrap}>
+          <Text style={s.icon}>✓</Text>
         </View>
 
-        <Text style={s.heading}>
-          {queued ? 'Saved for Sync' : 'Submitted Successfully'}
-        </Text>
+        <Text style={s.heading}>Submitted Successfully</Text>
 
-        <Text style={s.sub}>
-          {queued
-            ? 'No network connection. Your answers are saved locally and will sync automatically when you reconnect.'
-            : 'Your assessment has been submitted to ServiceNow.'}
-        </Text>
+        <Text style={s.sub}>Your assessment has been submitted to ServiceNow.</Text>
 
         <View style={s.divider} />
 
@@ -45,7 +39,7 @@ export default function SubmissionSuccess({ route, navigation }) {
         {closeFailed ? (
           <Text style={s.closeHint}>You can now close this tab.</Text>
         ) : (
-          <TouchableOpacity style={[s.btn, queued && s.btnQueued]} onPress={handleClose}>
+          <TouchableOpacity style={s.btn} onPress={handleClose}>
             <Text style={s.btnText}>Close Window</Text>
           </TouchableOpacity>
         )}
@@ -80,7 +74,6 @@ const s = StyleSheet.create({
     backgroundColor: '#dcfce7', justifyContent: 'center', alignItems: 'center',
     marginBottom: 16,
   },
-  iconWrapQueued: { backgroundColor: '#fef9c3' },
   icon: { fontSize: 36 },
   heading: {
     fontSize: 22, fontWeight: '700', color: '#0f172a', marginBottom: 8, textAlign: 'center',
@@ -99,7 +92,6 @@ const s = StyleSheet.create({
     marginTop: 4, backgroundColor: '#16a34a', borderRadius: 10,
     paddingVertical: 14, width: '100%', alignItems: 'center',
   },
-  btnQueued: { backgroundColor: '#ca8a04' },
   btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
   closeHint: { marginTop: 4, fontSize: 14, color: '#64748b', textAlign: 'center' },
 });

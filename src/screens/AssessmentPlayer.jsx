@@ -29,7 +29,6 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fetchAssessmentByInstance, submitAssessment, uploadAttachment, completeAssessment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
-import { saveResponse } from '../db';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -882,26 +881,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       });
     } catch (e) {
       const msg = e.message || '';
-      const isOffline = (Platform.OS === 'web' && !navigator.onLine) || msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed');
-
-      if (isOffline) {
-        const queueId = preKnownInstanceId || `offline_${Date.now()}`;
-        await saveResponse(queueId, {
-          status: 'pending',
-          payload: submitBody,
-          attachments: attachmentAnswers,
-          submittedAt,
-        });
-        // Keep assessmentStore alive so the assessment remains resumable while sync is pending
-        navigation.replace('SubmissionSuccess', {
-          instanceNumber: null,
-          answered: null,
-          skipped: null,
-          submittedAt,
-          queued: true,
-        });
-        return;
-      }
+      const isNetworkError = msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed');
 
       const isCompleteFailure = msg.toLowerCase().includes('complete');
       if (isCompleteFailure) {
@@ -915,7 +895,10 @@ export default function AssessmentPlayer({ route, navigation }) {
         });
         return;
       }
-      const userMsg = `Submission failed: ${msg || 'Please check your connection and try again.'}`;
+
+      const userMsg = isNetworkError
+        ? 'Unable to reach the server. Please check your connection and try again.\n\nYour answers are still saved.'
+        : `Submission failed: ${msg || 'Please try again.'}`;
       if (Platform.OS === 'web') {
         window.alert(userMsg);
       } else {
