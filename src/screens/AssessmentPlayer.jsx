@@ -641,7 +641,24 @@ export default function AssessmentPlayer({ route, navigation }) {
   // ── Update title when payload loads ───────────────────
   useEffect(() => {
     if (payload?.title) {
-      navigation.setOptions({ title: payload.title });
+      navigation.setOptions({
+        title: '',
+        headerLeft: () => (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#eab308' }} />
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#eab308' }} />
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
+            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e', justifyContent: 'center', alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontSize: 7, marginLeft: 1 }}>{'▶'}</Text>
+            </View>
+          </View>
+        ),
+        headerRight: () => (
+          <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 14, marginRight: 4 }} numberOfLines={1}>
+            {payload.title}
+          </Text>
+        ),
+      });
     }
   }, [payload]);
 
