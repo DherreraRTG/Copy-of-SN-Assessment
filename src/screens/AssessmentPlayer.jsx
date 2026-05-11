@@ -23,6 +23,7 @@ import {
   Alert,
   KeyboardAvoidingView,
   Platform,
+  Image,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
@@ -643,17 +644,15 @@ export default function AssessmentPlayer({ route, navigation }) {
     navigation.setOptions({
       title: '',
       headerLeft: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#eab308' }} />
-          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#eab308' }} />
-          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#ef4444' }} />
-          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#22c55e', justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontSize: 6, marginLeft: 1 }}>{'▶'}</Text>
-          </View>
-          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13, marginLeft: 6, letterSpacing: 0.5 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 }}>
+          <Image
+            source={require('../../assets/Rtg logo.png')}
+            style={{ height: 24, width: 80, resizeMode: 'contain' }}
+          />
+          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 }}>
             ROOMS TO GO
           </Text>
-          <Text style={{ color: '#a0a8c0', fontSize: 13, marginLeft: 2 }}>| now</Text>
+          <Text style={{ color: '#a0a8c0', fontSize: 13 }}>| now</Text>
         </View>
       ),
     });
