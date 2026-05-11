@@ -59,39 +59,38 @@ function Row({ label, value }) {
 
 const s = StyleSheet.create({
   container: {
-    flex: 1, backgroundColor: '#f5f7fa',
+    flex: 1, backgroundColor: '#f2f4f7',
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   card: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 28,
+    backgroundColor: '#fff', borderRadius: 4, padding: 28,
     width: '100%', maxWidth: 480,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    borderWidth: 1, borderColor: '#d8dde6',
     alignItems: 'center',
   },
   iconWrap: {
-    width: 72, height: 72, borderRadius: 36,
-    backgroundColor: '#dcfce7', justifyContent: 'center', alignItems: 'center',
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#e3f5e9', justifyContent: 'center', alignItems: 'center',
     marginBottom: 16,
   },
-  icon: { fontSize: 36 },
+  icon: { fontSize: 32 },
   heading: {
-    fontSize: 22, fontWeight: '700', color: '#0f172a', marginBottom: 8, textAlign: 'center',
+    fontSize: 20, fontWeight: '700', color: '#1b1b38', marginBottom: 8, textAlign: 'center',
   },
   sub: {
-    fontSize: 13, color: '#64748b', textAlign: 'center', lineHeight: 20, marginBottom: 4,
+    fontSize: 13, color: '#67717e', textAlign: 'center', lineHeight: 20, marginBottom: 4,
   },
-  divider: { height: 1, backgroundColor: '#e2e8f0', width: '100%', marginVertical: 20 },
+  divider: { height: 1, backgroundColor: '#d8dde6', width: '100%', marginVertical: 20 },
   row: {
     flexDirection: 'row', justifyContent: 'space-between',
     width: '100%', paddingVertical: 5,
   },
-  rowLabel: { fontSize: 13, color: '#64748b' },
-  rowValue: { fontSize: 13, fontWeight: '600', color: '#0f172a', flexShrink: 1, textAlign: 'right', marginLeft: 16 },
+  rowLabel: { fontSize: 13, color: '#67717e' },
+  rowValue: { fontSize: 13, fontWeight: '600', color: '#1b1b38', flexShrink: 1, textAlign: 'right', marginLeft: 16 },
   btn: {
-    marginTop: 4, backgroundColor: '#16a34a', borderRadius: 10,
-    paddingVertical: 14, width: '100%', alignItems: 'center',
+    marginTop: 4, backgroundColor: '#0070d2', borderRadius: 4,
+    paddingVertical: 13, width: '100%', alignItems: 'center',
   },
-  btnText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  closeHint: { marginTop: 4, fontSize: 14, color: '#64748b', textAlign: 'center' },
+  btnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
+  closeHint: { marginTop: 4, fontSize: 13, color: '#67717e', textAlign: 'center' },
 });

@@ -71,28 +71,27 @@ export default function ErrorScreen({ route, navigation }) {
 
 const s = StyleSheet.create({
   container: {
-    flex: 1, backgroundColor: '#f5f7fa',
+    flex: 1, backgroundColor: '#f2f4f7',
     justifyContent: 'center', alignItems: 'center', padding: 24,
   },
   card: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 32,
+    backgroundColor: '#fff', borderRadius: 4, padding: 32,
     width: '100%', maxWidth: 440, alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 8, elevation: 3,
+    borderWidth: 1, borderColor: '#d8dde6',
   },
-  icon:    { fontSize: 48, marginBottom: 16 },
-  title:   { fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 8, textAlign: 'center' },
-  message: { fontSize: 14, color: '#64748b', textAlign: 'center', lineHeight: 22, marginBottom: 16 },
+  icon:    { fontSize: 40, marginBottom: 16 },
+  title:   { fontSize: 18, fontWeight: '700', color: '#1b1b38', marginBottom: 8, textAlign: 'center' },
+  message: { fontSize: 13, color: '#67717e', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
   detailBox: {
-    backgroundColor: '#fef2f2', borderRadius: 8, padding: 12,
-    width: '100%', marginBottom: 24,
+    backgroundColor: '#fef2f2', borderRadius: 4, padding: 12,
+    width: '100%', marginBottom: 24, borderWidth: 1, borderColor: '#fecaca',
   },
   detailText: { fontSize: 11, color: '#991b1b', fontFamily: 'monospace', textAlign: 'center' },
   btn: {
-    backgroundColor: '#0a2540', borderRadius: 10,
-    paddingVertical: 13, width: '100%', alignItems: 'center', marginBottom: 10,
+    backgroundColor: '#0070d2', borderRadius: 4,
+    paddingVertical: 12, width: '100%', alignItems: 'center', marginBottom: 10,
   },
-  btnText:         { color: '#fff', fontWeight: '700', fontSize: 15 },
+  btnText:         { color: '#fff', fontWeight: '700', fontSize: 14 },
   secondaryBtn:    { paddingVertical: 8, width: '100%', alignItems: 'center' },
-  secondaryBtnText:{ color: '#64748b', fontSize: 13 },
+  secondaryBtnText:{ color: '#67717e', fontSize: 13 },
 });

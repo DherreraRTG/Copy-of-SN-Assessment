@@ -46,10 +46,10 @@ export default function AppNavigator() {
       <Stack.Navigator
         initialRouteName="MyAssessments"
         screenOptions={{
-          headerStyle: { backgroundColor: '#0a2540' },
+          headerStyle: { backgroundColor: '#1b1b38' },
           headerTintColor: '#ffffff',
-          headerTitleStyle: { fontWeight: '600' },
-          contentStyle: { backgroundColor: '#f5f7fa' },
+          headerTitleStyle: { fontWeight: '600', fontSize: 15 },
+          contentStyle: { backgroundColor: '#f2f4f7' },
         }}
       >
         <Stack.Screen

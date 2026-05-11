@@ -59,13 +59,13 @@ export default function MyAssessments({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8fafc', padding: 24, justifyContent: 'center' },
-  heading: { fontSize: 24, fontWeight: '700', color: '#0f172a', marginBottom: 8 },
-  sub: { fontSize: 14, color: '#64748b', marginBottom: 28, lineHeight: 20 },
-  loadingText: { marginTop: 16, fontSize: 16, color: '#0a2540', fontWeight: '600' },
+  container: { flex: 1, backgroundColor: '#f2f4f7', padding: 24, justifyContent: 'center' },
+  heading: { fontSize: 22, fontWeight: '700', color: '#1b1b38', marginBottom: 8 },
+  sub: { fontSize: 13, color: '#67717e', marginBottom: 28, lineHeight: 20 },
+  loadingText: { marginTop: 16, fontSize: 15, color: '#1b1b38', fontWeight: '600' },
   resumeBtn: {
-    borderWidth: 1, borderColor: '#0a2540', borderRadius: 8,
-    paddingVertical: 14, alignItems: 'center',
+    backgroundColor: '#0070d2', borderRadius: 4,
+    paddingVertical: 13, alignItems: 'center',
   },
-  resumeBtnText: { color: '#0a2540', fontWeight: '700', fontSize: 15 },
+  resumeBtnText: { color: '#ffffff', fontWeight: '600', fontSize: 14 },
 });
