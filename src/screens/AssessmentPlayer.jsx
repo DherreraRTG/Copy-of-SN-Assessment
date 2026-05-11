@@ -638,29 +638,26 @@ export default function AssessmentPlayer({ route, navigation }) {
     if (savedIndex > 0) setActiveCategoryIndex(savedIndex);
   }
 
-  // ── Update title when payload loads ───────────────────
+  // ── Update header branding when payload loads ─────────
   useEffect(() => {
-    if (payload?.title) {
-      navigation.setOptions({
-        title: '',
-        headerLeft: () => (
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 }}>
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#eab308' }} />
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#eab308' }} />
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#ef4444' }} />
-            <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: '#22c55e', justifyContent: 'center', alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontSize: 7, marginLeft: 1 }}>{'▶'}</Text>
-            </View>
+    navigation.setOptions({
+      title: '',
+      headerLeft: () => (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginLeft: 4 }}>
+          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#eab308' }} />
+          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#eab308' }} />
+          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#ef4444' }} />
+          <View style={{ width: 11, height: 11, borderRadius: 6, backgroundColor: '#22c55e', justifyContent: 'center', alignItems: 'center' }}>
+            <Text style={{ color: '#fff', fontSize: 6, marginLeft: 1 }}>{'▶'}</Text>
           </View>
-        ),
-        headerRight: () => (
-          <Text style={{ color: '#ffffff', fontWeight: '600', fontSize: 14, marginRight: 4 }} numberOfLines={1}>
-            {payload.title}
+          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13, marginLeft: 6, letterSpacing: 0.5 }}>
+            ROOMS TO GO
           </Text>
-        ),
-      });
-    }
-  }, [payload]);
+          <Text style={{ color: '#a0a8c0', fontSize: 13, marginLeft: 2 }}>| now</Text>
+        </View>
+      ),
+    });
+  }, []);
 
   // ── Warn before leaving with unsaved answers ───────────
   useEffect(() => {
@@ -959,6 +956,11 @@ export default function AssessmentPlayer({ route, navigation }) {
       style={{ flex: 1 }}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      {/* ── Page title band ── */}
+      <View style={styles.pageTitleBand}>
+        <Text style={styles.pageTitleText} numberOfLines={1}>{payload?.title || 'Assessment'}</Text>
+      </View>
+
       {/* ── Offline banner ── */}
       {!isOnline && (
         <View style={styles.offlineBanner}>
@@ -1089,6 +1091,18 @@ const styles = StyleSheet.create({
   retryBtnText: {
     color: '#fff',
     fontWeight: '600',
+  },
+  pageTitleBand: {
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 20,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#d8dde6',
+  },
+  pageTitleText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#1b1b38',
   },
   offlineBanner: {
     backgroundColor: '#fff3cd',
