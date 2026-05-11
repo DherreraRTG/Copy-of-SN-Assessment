@@ -657,14 +657,13 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   // ── Dependency resolution ──────────────────────────────
   function isVisible(question, categoryQuestions) {
-    // Category gating: if "Do you want to complete this category?" is "No",
-    // hide every question except the gating question itself.
+    // Category gating: hide all other questions until "Yes" is explicitly selected.
     const gatingQ = categoryQuestions.find(q =>
       /(complete this category|want to complete)/i.test(q.question || q.name)
     );
     if (gatingQ && gatingQ.metricID !== question.metricID) {
-      const noChoice = (gatingQ.choices || []).find(c => /^no$/i.test(c.label));
-      if (noChoice && answers[gatingQ.metricID] === noChoice.sys_id) return false;
+      const yesChoice = (gatingQ.choices || []).find(c => /^yes$/i.test(c.label));
+      if (!yesChoice || answers[gatingQ.metricID] !== yesChoice.sys_id) return false;
     }
 
     if (!question.depends_on) return true;
