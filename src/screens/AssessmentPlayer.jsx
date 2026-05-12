@@ -644,13 +644,10 @@ export default function AssessmentPlayer({ route, navigation }) {
     navigation.setOptions({
       title: '',
       headerLeft: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginLeft: 8 }}>
-          <Image
-            source={require('../../assets/Rtg logo.png')}
-            style={{ height: 32, width: 110, resizeMode: 'contain' }}
-          />
-          <Text style={{ color: '#a0a8c0', fontSize: 15, marginLeft: 8 }}>| now</Text>
-        </View>
+        <Image
+          source={require('../../assets/Rtg logo.png')}
+          style={{ height: 40, width: 180, resizeMode: 'contain', marginLeft: 8 }}
+        />
       ),
       headerStyle: { backgroundColor: '#1b1b38', height: 56 },
     });
