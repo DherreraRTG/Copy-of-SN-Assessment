@@ -1,4 +1,4 @@
-const CACHE = 'sn-assessment-v3';
+const CACHE = 'sn-assessment-v5';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -38,10 +38,12 @@ self.addEventListener('fetch', (event) => {
         return res;
       })
       .catch(() =>
-        // Offline: serve from cache, fall back to index.html for navigation
-        caches.match(event.request).then(
-          (cached) => cached || caches.match('/index.html')
-        )
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          // Only fall back to index.html for page navigations — never for JS/CSS assets
+          if (event.request.mode === 'navigate') return caches.match('/index.html');
+          return new Response('', { status: 503, statusText: 'Offline' });
+        })
       )
   );
 });
