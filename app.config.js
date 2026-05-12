@@ -2,7 +2,7 @@ require('dotenv').config();
 
 module.exports = {
   expo: {
-    name: 'SN Assessment',
+    name: 'NPM Assessment',
     slug: 'sn-assessment',
     version: '1.0.0',
     scheme: 'rtgaudit',
