@@ -644,16 +644,10 @@ export default function AssessmentPlayer({ route, navigation }) {
     navigation.setOptions({
       title: '',
       headerLeft: () => (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginLeft: 4 }}>
-          <Image
-            source={require('../../assets/Rtg logo.png')}
-            style={{ height: 24, width: 80, resizeMode: 'contain' }}
-          />
-          <Text style={{ color: '#ffffff', fontWeight: '700', fontSize: 13, letterSpacing: 0.5 }}>
-            ROOMS TO GO
-          </Text>
-          <Text style={{ color: '#a0a8c0', fontSize: 13 }}>| now</Text>
-        </View>
+        <Image
+          source={require('../../assets/Rtg logo.png')}
+          style={{ height: 24, width: 80, resizeMode: 'contain', marginLeft: 4 }}
+        />
       ),
     });
   }, []);
