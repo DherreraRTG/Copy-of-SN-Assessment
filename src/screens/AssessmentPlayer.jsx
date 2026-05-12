@@ -646,7 +646,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       headerLeft: () => (
         <Image
           source={require('../../assets/Rtg logo.png')}
-          style={{ height: 40, width: 180, resizeMode: 'contain', marginLeft: 8 }}
+          style={{ height: 34, width: 155, resizeMode: 'contain', marginLeft: 20 }}
         />
       ),
       headerStyle: { backgroundColor: '#1b1b38', height: 56 },
