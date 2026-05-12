@@ -30,6 +30,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fetchAssessmentByInstance, submitAssessment, uploadAttachment, completeAssessment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
+import { photoStore, blobToBase64 } from '../utils/photoStore';
 
 // ─────────────────────────────────────────────
 // Helpers
@@ -76,47 +77,87 @@ function compressImage(dataUrl, maxWidth = 900, targetKB = 50) {
 
 function WebFileInput({ value, onChange }) {
   const inputRef = React.useRef(null);
-  const files = Array.isArray(value) ? value : (value && typeof value === 'string' && value.startsWith('data:') ? [value] : []);
+  const [previewUrls, setPreviewUrls] = React.useState({});
+  const loadedKeys = React.useRef(new Set());
 
-  const handleChange = (e) => {
+  const files = Array.isArray(value)
+    ? value
+    : (value && typeof value === 'string' && (value.startsWith('data:') || value.startsWith('idb:'))
+      ? [value] : []);
+
+  // Load preview object-URLs for any idb: entries not yet loaded
+  React.useEffect(() => {
+    const pending = files.filter(f => f.startsWith('idb:') && !loadedKeys.current.has(f));
+    if (!pending.length) return;
+    let cancelled = false;
+    (async () => {
+      const next = {};
+      for (const key of pending) {
+        loadedKeys.current.add(key);
+        const entry = await photoStore.load(key);
+        if (entry?.blob && entry.type?.startsWith('image/') && !cancelled) {
+          next[key] = URL.createObjectURL(entry.blob);
+        }
+      }
+      if (!cancelled && Object.keys(next).length) setPreviewUrls(prev => ({ ...prev, ...next }));
+    })();
+    return () => { cancelled = true; };
+  }, [files.join('|')]);
+
+  // Revoke object-URLs on unmount to free memory
+  React.useEffect(() => {
+    return () => Object.values(previewUrls).forEach(u => u && URL.revokeObjectURL(u));
+  }, []);
+
+  const handleChange = async (e) => {
     const selected = Array.from(e.target.files);
     if (!selected.length) return;
-    const results = [];
-    let done = 0;
-    selected.forEach((file, i) => {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        const compressed = file.type.startsWith('image/')
-          ? await compressImage(reader.result)
-          : reader.result;
-        results[i] = compressed;
-        done++;
-        if (done === selected.length) {
-          onChange([...files, ...results]);
-          e.target.value = '';
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    const refs = [];
+    const newUrls = {};
+    for (const file of selected) {
+      try {
+        const key = await photoStore.save(file);
+        refs.push(key);
+        loadedKeys.current.add(key);
+        if (file.type.startsWith('image/')) newUrls[key] = URL.createObjectURL(file);
+      } catch (err) {
+        console.warn('photoStore.save failed, falling back to base64', err);
+        // Fallback: read as base64 (old behaviour)
+        await new Promise(resolve => {
+          const reader = new FileReader();
+          reader.onload = () => { refs.push(reader.result); resolve(); };
+          reader.readAsDataURL(file);
+        });
+      }
+    }
+    if (Object.keys(newUrls).length) setPreviewUrls(prev => ({ ...prev, ...newUrls }));
+    onChange([...files, ...refs]);
+    e.target.value = '';
   };
 
-  const remove = (idx) => onChange(files.filter((_, i) => i !== idx));
+  const remove = async (idx) => {
+    const f = files[idx];
+    if (f.startsWith('idb:')) {
+      photoStore.remove(f);
+      if (previewUrls[f]) { URL.revokeObjectURL(previewUrls[f]); setPreviewUrls(prev => { const n = { ...prev }; delete n[f]; return n; }); }
+    }
+    onChange(files.filter((_, i) => i !== idx));
+  };
 
   return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-    ...files.map((f, idx) =>
-      React.createElement('div', { key: idx, style: { display: 'flex', alignItems: 'center', gap: 8 } },
-        f.startsWith('data:image') && React.createElement('img', {
-          src: f,
-          style: { width: 64, height: 64, objectFit: 'cover', borderRadius: 6 },
-        }),
-        !f.startsWith('data:image') && React.createElement('span', { style: { fontSize: 12, color: '#1a6b9a', flex: 1 } }, `✓ File ${idx + 1} attached`),
+    ...files.map((f, idx) => {
+      const src = f.startsWith('data:image') ? f : (f.startsWith('idb:') ? previewUrls[f] : null);
+      return React.createElement('div', { key: idx, style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        src
+          ? React.createElement('img', { src, style: { width: 64, height: 64, objectFit: 'cover', borderRadius: 6 } })
+          : React.createElement('span', { style: { fontSize: 12, color: '#1a6b9a', flex: 1 } }, `✓ File ${idx + 1} attached`),
         React.createElement('button', {
           type: 'button',
           onClick: () => remove(idx),
           style: { background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 18, lineHeight: 1 },
         }, '✕'),
-      )
-    ),
+      );
+    }),
     React.createElement('input', {
       ref: inputRef,
       type: 'file',
@@ -818,10 +859,10 @@ export default function AssessmentPlayer({ route, navigation }) {
             };
           }
 
-          // Strip base64 from body — upload separately after submit (supports multiple files)
+          // Strip file refs from body — upload separately after submit
           if (question?.datatype === 'attachment') {
-            const fileList = Array.isArray(raw) ? raw : (raw && raw.startsWith('data:') ? [raw] : []);
-            fileList.forEach(base64 => attachmentAnswers.push({ metricID: q.metricID, base64 }));
+            const fileList = Array.isArray(raw) ? raw : (raw && (raw.startsWith('data:') || raw.startsWith('idb:')) ? [raw] : []);
+            fileList.forEach(fileRef => attachmentAnswers.push({ metricID: q.metricID, fileRef }));
             return { metricID: q.metricID, value: '', string_value: '' };
           }
 
@@ -849,20 +890,26 @@ export default function AssessmentPlayer({ route, navigation }) {
       // Upload all attachments in parallel, tracking progress and collecting failures
       if (attachmentAnswers.length > 0 && instanceId) {
         setUploadProgress({ done: 0, total: attachmentAnswers.length });
-        let done = 0;
         const failed = [];
-        await Promise.all(
-          attachmentAnswers.map(async ({ metricID, base64 }, i) => {
-            try {
-              await uploadAttachment(instanceId, metricID, base64);
-            } catch {
-              failed.push(i + 1);
-            } finally {
-              done++;
-              setUploadProgress({ done, total: attachmentAnswers.length });
+        // Upload sequentially to avoid loading all blobs into memory at once
+        for (let i = 0; i < attachmentAnswers.length; i++) {
+          const { metricID, fileRef } = attachmentAnswers[i];
+          try {
+            let base64;
+            if (fileRef.startsWith('idb:')) {
+              const entry = await photoStore.load(fileRef);
+              if (!entry?.blob) throw new Error('Photo missing from local storage');
+              base64 = await blobToBase64(entry.blob);
+            } else {
+              base64 = fileRef; // legacy base64 format
             }
-          })
-        );
+            await uploadAttachment(instanceId, metricID, base64);
+            if (fileRef.startsWith('idb:')) photoStore.remove(fileRef);
+          } catch {
+            failed.push(i + 1);
+          }
+          setUploadProgress({ done: i + 1, total: attachmentAnswers.length });
+        }
         setUploadProgress(null);
         if (failed.length > 0) {
           throw new Error(
@@ -881,6 +928,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       }
 
       await assessmentStore.clear();
+      await photoStore.clear();
       navigation.replace('SubmissionSuccess', {
         instanceNumber: result?.body?.instance_number || instanceId,
         answered: result?.body?.answered ?? null,
@@ -895,6 +943,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       if (isCompleteFailure) {
         // Answers are in SN — pending complete is already saved and will retry on next open
         await assessmentStore.clear();
+        await photoStore.clear();
         navigation.replace('SubmissionSuccess', {
           instanceNumber: null,
           answered: null,
