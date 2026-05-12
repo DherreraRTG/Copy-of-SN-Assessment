@@ -686,7 +686,7 @@ export default function AssessmentPlayer({ route, navigation }) {
       title: '',
       headerLeft: () => (
         <Image
-          source={require('../../assets/Rtg logo.png')}
+          source={Platform.OS === 'web' ? { uri: '/rtg-logo.png' } : require('../../assets/Rtg logo.png')}
           style={{ height: 34, width: 155, resizeMode: 'contain', marginLeft: 20 }}
         />
       ),

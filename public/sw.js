@@ -1,9 +1,9 @@
-const CACHE = 'sn-assessment-v5';
+const CACHE = 'sn-assessment-v6';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(['/', '/index.html']))
+    caches.open(CACHE).then((cache) => cache.addAll(['/', '/index.html', '/rtg-logo.png']))
   );
 });
 
