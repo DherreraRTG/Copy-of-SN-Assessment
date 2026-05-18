@@ -28,8 +28,6 @@ export default async function handler(req, res) {
   const SN_USERNAME     = process.env[`SN_USERNAME${suffix}`]      || process.env.SN_USERNAME;
   const SN_PASSWORD     = process.env[`SN_PASSWORD${suffix}`]      || process.env.SN_PASSWORD;
 
-  console.log('[token] instance_key:', instance_key, '| suffix:', suffix, '| SN_INSTANCE:', SN_INSTANCE, '| has_user:', !!SN_USERNAME, '| has_pass:', !!SN_PASSWORD, '| has_cid:', !!SN_CLIENT_ID, '| has_csec:', !!SN_CLIENT_SECRET);
-
   // Try OAuth ROPC first
   try {
     const { refresh_token } = req.body || {};
@@ -44,7 +42,6 @@ export default async function handler(req, res) {
     });
 
     const json = await snRes.json();
-    console.log('[token] oauth status:', snRes.status, '| error:', json.error);
     if (snRes.ok && !json.error) {
       return res.status(200).json({
         access_token:  json.access_token,
@@ -63,7 +60,6 @@ export default async function handler(req, res) {
     });
 
     // Accept anything except 401 — 404 just means ping endpoint doesn't exist, creds are still valid
-    console.log('[token] basic auth ping status:', testRes.status);
     if (testRes.status !== 401) {
       return res.status(200).json({
         access_token: encoded,
