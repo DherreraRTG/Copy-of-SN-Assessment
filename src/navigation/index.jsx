@@ -32,6 +32,7 @@ const linking = {
         parse: {
           instance_sys_id: (value) => value,
           task_sys_id: (value) => value,
+          sn_instance: (value) => value,
         },
       },
       SkuSelection: 'sku-selection',

@@ -18,7 +18,7 @@ if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import AppNavigator, { navigationRef } from './src/navigation';
-import { fetchAssessmentByInstance, initAuth, completeAssessment } from './src/services/assessmentService';
+import { fetchAssessmentByInstance, initAuth, completeAssessment, setSnInstance } from './src/services/assessmentService';
 import { assessmentStore } from './src/store/assessmentStore';
 
 /**
@@ -63,6 +63,7 @@ function handleDeepLink(url) {
         return;
       }
       try {
+        await setSnInstance(parsed.params.sn_instance || null);
         await assessmentStore.clear();
         const payload = await fetchAssessmentByInstance(instanceSysId);
         if (taskSysId) payload.task_sys_id = taskSysId;

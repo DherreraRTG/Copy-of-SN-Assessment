@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
-import { fetchAssessmentByInstance } from '../services/assessmentService';
+import { fetchAssessmentByInstance, setSnInstance } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
 
 export default function MyAssessments({ navigation, route }) {
@@ -11,11 +11,14 @@ export default function MyAssessments({ navigation, route }) {
     assessmentStore.hydrate().then(p => setResumable(!!p));
   }, []);
 
-  // Auto-load when arriving from a URL deep link (/assessment?instance_sys_id=...&task_sys_id=...)
+  // Auto-load when arriving from a URL deep link (/assessment?instance_sys_id=...&task_sys_id=...&sn_instance=...)
   useEffect(() => {
     const instanceSysId = route?.params?.instance_sys_id;
     if (!instanceSysId) return;
-    loadById(instanceSysId, route?.params?.task_sys_id || null);
+    const snInstance = route?.params?.sn_instance || null;
+    setSnInstance(snInstance).then(() =>
+      loadById(instanceSysId, route?.params?.task_sys_id || null)
+    );
   }, [route?.params?.instance_sys_id]);
 
   async function loadById(id, taskSysId = null) {

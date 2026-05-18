@@ -1,13 +1,28 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 
-const BASE_URL = Constants.expoConfig?.extra?.snInstance || 'https://roomstogodev.service-now.com';
-const API_BASE = `${BASE_URL}/api/x_rtg_npm/offline_assessment`;
+const DEFAULT_INSTANCE = Constants.expoConfig?.extra?.snInstance || 'https://roomstogodev.service-now.com';
+const INSTANCE_KEY = 'sn_instance';
 
 const TOKEN_KEY    = 'sn_oauth_token';
 const EXPIRY_KEY   = 'sn_oauth_expiry';
 const REFRESH_KEY  = 'sn_oauth_refresh';
 const SCHEME_KEY   = 'sn_oauth_scheme';
+
+// Store the SN instance URL (called from URL/deep-link params before any API call)
+export async function setSnInstance(url) {
+  if (!url) return;
+  // Normalise — strip trailing slash
+  const clean = url.replace(/\/$/, '');
+  await AsyncStorage.setItem(INSTANCE_KEY, clean);
+  // Clear cached token so it re-auths against the new instance
+  await AsyncStorage.multiRemove([TOKEN_KEY, EXPIRY_KEY, REFRESH_KEY, SCHEME_KEY]);
+}
+
+async function getApiBase() {
+  const stored = await AsyncStorage.getItem(INSTANCE_KEY);
+  return `${stored || DEFAULT_INSTANCE}/api/x_rtg_npm/offline_assessment`;
+}
 
 // ─── Token management ────────────────────────────────────────────────────────
 
@@ -87,7 +102,7 @@ export async function fetchAssessmentByInstance(instanceSysId) {
   if (!instanceSysId) throw new Error('instanceSysId is required');
 
   const headers = await getAuthHeaders();
-  const res = await apiFetch(`${API_BASE}/${instanceSysId}`, { method: 'GET', headers });
+  const res = await apiFetch(`${await getApiBase()}/${instanceSysId}`, { method: 'GET', headers });
 
   if (!res.ok) throw new Error(`API error ${res.status}: ${res.statusText}`);
 
@@ -105,7 +120,7 @@ export async function submitAssessment(payload) {
   const timeout = setTimeout(() => controller.abort(), 300000);
 
   try {
-    const res = await apiFetch(`${API_BASE}/submit`, {
+    const res = await apiFetch(`${await getApiBase()}/submit`, {
       method: 'POST',
       headers,
       body: JSON.stringify(payload),
@@ -131,7 +146,7 @@ export async function completeAssessment(instanceSysId) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 30000);
   try {
-    const res = await apiFetch(`${API_BASE}/complete`, {
+    const res = await apiFetch(`${await getApiBase()}/complete`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ instance_sys_id: instanceSysId }),
@@ -154,7 +169,7 @@ export async function uploadAttachment(instanceSysId, metricSysId, base64Data) {
   const timeout = setTimeout(() => controller.abort(), 30000);
 
   try {
-    const res = await apiFetch(`${API_BASE}/upload-attachment`, {
+    const res = await apiFetch(`${await getApiBase()}/upload-attachment`, {
       method: 'POST',
       headers,
       body: JSON.stringify({
