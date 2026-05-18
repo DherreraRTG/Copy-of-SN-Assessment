@@ -1,4 +1,4 @@
-const CACHE = 'sn-assessment-v7';
+const CACHE = 'sn-assessment-v8';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -44,7 +44,7 @@ self.addEventListener('fetch', (event) => {
       caches.match(event.request).then((cached) => {
         if (cached) return cached;
         return fetch(event.request).then((res) => {
-          if (res.ok) caches.open(CACHE).then((c) => c.put(event.request, res.clone()));
+          if (res.ok) { const clone = res.clone(); caches.open(CACHE).then((c) => c.put(event.request, clone)); }
           return res;
         }).catch(() => new Response('', { status: 503 }));
       })
@@ -57,7 +57,8 @@ self.addEventListener('fetch', (event) => {
     fetch(event.request)
       .then((res) => {
         if (res.ok && url.origin === self.location.origin) {
-          caches.open(CACHE).then((c) => c.put(event.request, res.clone()));
+          const clone = res.clone();
+          caches.open(CACHE).then((c) => c.put(event.request, clone));
         }
         return res;
       })
