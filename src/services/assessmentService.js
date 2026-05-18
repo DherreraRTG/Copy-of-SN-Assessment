@@ -9,13 +9,15 @@ const EXPIRY_KEY   = 'sn_oauth_expiry';
 const REFRESH_KEY  = 'sn_oauth_refresh';
 const SCHEME_KEY   = 'sn_oauth_scheme';
 
-// Store the SN instance URL (called from URL/deep-link params before any API call)
-export async function setSnInstance(url) {
-  if (!url) return;
-  // Normalise — strip trailing slash
-  const clean = url.replace(/\/$/, '');
-  await AsyncStorage.setItem(INSTANCE_KEY, clean);
-  // Clear cached token so it re-auths against the new instance
+// Store the SN instance. Accepts either a full URL or just the subdomain (e.g. "roomstogoqua").
+export async function setSnInstance(value) {
+  if (!value) return;
+  // Normalise to a full URL
+  const full = value.startsWith('http')
+    ? value.replace(/\/$/, '')
+    : `https://${value.replace(/\/$/, '')}.service-now.com`;
+  await AsyncStorage.setItem(INSTANCE_KEY, full);
+  // Clear cached token so it re-auths against the correct instance
   await AsyncStorage.multiRemove([TOKEN_KEY, EXPIRY_KEY, REFRESH_KEY, SCHEME_KEY]);
 }
 
