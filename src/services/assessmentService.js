@@ -29,10 +29,15 @@ async function getApiBase() {
 // ─── Token management ────────────────────────────────────────────────────────
 
 async function callTokenProxy(body) {
+  const stored = await AsyncStorage.getItem(INSTANCE_KEY);
+  const instanceKey = stored
+    ? stored.replace(/^https?:\/\//, '').split('.')[0]
+    : null;
+
   const res = await fetch('/api/token', {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify(body),
+    body:    JSON.stringify({ ...body, ...(instanceKey ? { instance_key: instanceKey } : {}) }),
   });
   const json = await res.json();
   if (!res.ok || json.error) throw new Error(json.error || 'Auth failed');
