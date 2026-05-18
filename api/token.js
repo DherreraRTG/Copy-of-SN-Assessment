@@ -18,7 +18,17 @@ export default async function handler(req, res) {
   const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket?.remoteAddress || 'unknown';
   if (isRateLimited(ip)) return res.status(429).json({ error: 'Too many requests. Please wait and try again.' });
 
-  const { SN_INSTANCE, SN_CLIENT_ID, SN_CLIENT_SECRET, SN_USERNAME, SN_PASSWORD } = process.env;
+  // Select credential set based on instance_key (e.g. "roomstogoqa" → SN_*_QA env vars)
+  // Falls back to default env vars if no key or no matching set found.
+  const { instance_key } = req.body || {};
+  const suffix = instance_key ? `_${instance_key.toUpperCase().replace(/-/g, '_')}` : '';
+  const SN_INSTANCE     = process.env[`SN_INSTANCE${suffix}`]      || process.env.SN_INSTANCE;
+  const SN_CLIENT_ID    = process.env[`SN_CLIENT_ID${suffix}`]     || process.env.SN_CLIENT_ID;
+  const SN_CLIENT_SECRET= process.env[`SN_CLIENT_SECRET${suffix}`] || process.env.SN_CLIENT_SECRET;
+  const SN_USERNAME     = process.env[`SN_USERNAME${suffix}`]      || process.env.SN_USERNAME;
+  const SN_PASSWORD     = process.env[`SN_PASSWORD${suffix}`]      || process.env.SN_PASSWORD;
+
+  console.log('[token] instance_key:', instance_key, '| suffix:', suffix, '| SN_INSTANCE:', SN_INSTANCE, '| has_user:', !!SN_USERNAME, '| has_pass:', !!SN_PASSWORD, '| has_cid:', !!SN_CLIENT_ID, '| has_csec:', !!SN_CLIENT_SECRET);
 
   // Try OAuth ROPC first
   try {
@@ -34,6 +44,7 @@ export default async function handler(req, res) {
     });
 
     const json = await snRes.json();
+    console.log('[token] oauth status:', snRes.status, '| error:', json.error);
     if (snRes.ok && !json.error) {
       return res.status(200).json({
         access_token:  json.access_token,
@@ -52,6 +63,7 @@ export default async function handler(req, res) {
     });
 
     // Accept anything except 401 — 404 just means ping endpoint doesn't exist, creds are still valid
+    console.log('[token] basic auth ping status:', testRes.status);
     if (testRes.status !== 401) {
       return res.status(200).json({
         access_token: encoded,
