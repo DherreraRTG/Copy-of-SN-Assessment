@@ -1,32 +1,7 @@
-/**
- * AssessmentPlayer.jsx
- *
- * Can be reached two ways:
- *   1. Normal navigation from MyAssessments — user taps a downloaded assessment.
- *      route.params = { assessmentData: {...} }
- *
- *   2. Deep link from SN mobile UI Action.
- *      route.params = { instanceSysId: 'abc123', fromDeepLink: true }
- *      In this case we fetch the payload from the API on mount,
- *      cache it locally, then render as normal.
- */
-
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  ActivityIndicator,
-  StyleSheet,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
-  Image,
-} from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useFocusEffect } from '@react-navigation/native';
+import { useNavigate } from 'react-router-dom';
+import rtgLogo from '/public/rtg-logo.png';
+import storage from '../lib/storage';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { fetchAssessmentByInstance, submitAssessment, uploadAttachment, completeAssessment } from '../services/assessmentService';
 import { assessmentStore } from '../store/assessmentStore';
@@ -39,16 +14,26 @@ import { photoStore, blobToBase64 } from '../utils/photoStore';
 const CACHE_KEY = (id) => `assessment_instance_${id}`;
 
 async function getCached(instanceSysId) {
-  const raw = await AsyncStorage.getItem(CACHE_KEY(instanceSysId));
+  const raw = await storage.getItem(CACHE_KEY(instanceSysId));
   return raw ? JSON.parse(raw) : null;
 }
 
 async function setCached(instanceSysId, data) {
-  await AsyncStorage.setItem(CACHE_KEY(instanceSysId), JSON.stringify(data));
+  await storage.setItem(CACHE_KEY(instanceSysId), JSON.stringify(data));
+}
+
+function Spinner({ color = '#0a2540', size = 36 }) {
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: '50%',
+      border: `3px solid #e0e0e0`, borderTopColor: color,
+      animation: 'spin 0.8s linear infinite',
+    }} />
+  );
 }
 
 // ─────────────────────────────────────────────
-// Web file input (rendered via DOM)
+// Image compression + file input
 // ─────────────────────────────────────────────
 
 function compressImage(dataUrl, maxWidth = 900, targetKB = 50) {
@@ -60,7 +45,6 @@ function compressImage(dataUrl, maxWidth = 900, targetKB = 50) {
       const canvas = document.createElement('canvas');
       canvas.width = width; canvas.height = height;
       canvas.getContext('2d').drawImage(img, 0, 0, width, height);
-      // base64 is ~37% larger than binary, so target = targetKB * 1024 * 1.37
       const maxLen = targetKB * 1024 * 1.37;
       let quality = 0.7;
       let result = canvas.toDataURL('image/jpeg', quality);
@@ -85,7 +69,6 @@ function WebFileInput({ value, onChange }) {
     : (value && typeof value === 'string' && (value.startsWith('data:') || value.startsWith('idb:'))
       ? [value] : []);
 
-  // Load preview object-URLs for any idb: entries not yet loaded
   React.useEffect(() => {
     const pending = files.filter(f => f.startsWith('idb:') && !loadedKeys.current.has(f));
     if (!pending.length) return;
@@ -104,7 +87,6 @@ function WebFileInput({ value, onChange }) {
     return () => { cancelled = true; };
   }, [files.join('|')]);
 
-  // Revoke object-URLs on unmount to free memory
   React.useEffect(() => {
     return () => Object.values(previewUrls).forEach(u => u && URL.revokeObjectURL(u));
   }, []);
@@ -121,8 +103,6 @@ function WebFileInput({ value, onChange }) {
         loadedKeys.current.add(key);
         if (file.type.startsWith('image/')) newUrls[key] = URL.createObjectURL(file);
       } catch (err) {
-        console.warn('photoStore.save failed, falling back to base64', err);
-        // Fallback: read as base64 (old behaviour)
         await new Promise(resolve => {
           const reader = new FileReader();
           reader.onload = () => { refs.push(reader.result); resolve(); };
@@ -139,47 +119,51 @@ function WebFileInput({ value, onChange }) {
     const f = files[idx];
     if (f.startsWith('idb:')) {
       photoStore.remove(f);
-      if (previewUrls[f]) { URL.revokeObjectURL(previewUrls[f]); setPreviewUrls(prev => { const n = { ...prev }; delete n[f]; return n; }); }
+      if (previewUrls[f]) {
+        URL.revokeObjectURL(previewUrls[f]);
+        setPreviewUrls(prev => { const n = { ...prev }; delete n[f]; return n; });
+      }
     }
     onChange(files.filter((_, i) => i !== idx));
   };
 
-  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-    ...files.map((f, idx) => {
-      const src = f.startsWith('data:image') ? f : (f.startsWith('idb:') ? previewUrls[f] : null);
-      return React.createElement('div', { key: idx, style: { display: 'flex', alignItems: 'center', gap: 8 } },
-        src
-          ? React.createElement('img', { src, style: { width: 64, height: 64, objectFit: 'cover', borderRadius: 6 } })
-          : React.createElement('span', { style: { fontSize: 12, color: '#1a6b9a', flex: 1 } }, `✓ File ${idx + 1} attached`),
-        React.createElement('button', {
-          type: 'button',
-          onClick: () => remove(idx),
-          style: { background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 18, lineHeight: 1 },
-        }, '✕'),
-      );
-    }),
-    React.createElement('input', {
-      ref: inputRef,
-      type: 'file',
-      accept: 'image/*,application/pdf',
-      multiple: true,
-      onChange: handleChange,
-      style: { display: 'none' },
-    }),
-    React.createElement('button', {
-      type: 'button',
-      onClick: () => inputRef.current?.click(),
-      style: {
-        padding: '8px 14px',
-        backgroundColor: '#f0f4f8',
-        border: '1px solid #d0dce8',
-        borderRadius: 8,
-        cursor: 'pointer',
-        fontSize: 13,
-        color: '#3a5068',
-        textAlign: 'left',
-      },
-    }, files.length > 0 ? '📎 Add another file' : '📎 Choose file…'),
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      {files.map((f, idx) => {
+        const src = f.startsWith('data:image') ? f : (f.startsWith('idb:') ? previewUrls[f] : null);
+        return (
+          <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {src
+              ? <img src={src} style={{ width: 64, height: 64, objectFit: 'cover', borderRadius: 6 }} alt="" />
+              : <span style={{ fontSize: 12, color: '#1a6b9a', flex: 1 }}>{`✓ File ${idx + 1} attached`}</span>}
+            <button
+              type="button"
+              onClick={() => remove(idx)}
+              style={{ background: 'none', border: 'none', color: '#e74c3c', cursor: 'pointer', fontSize: 18, lineHeight: 1 }}
+            >✕</button>
+          </div>
+        );
+      })}
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*,application/pdf"
+        multiple
+        onChange={handleChange}
+        style={{ display: 'none' }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        style={{
+          padding: '8px 14px', backgroundColor: '#f0f4f8',
+          border: '1px solid #d0dce8', borderRadius: 8,
+          fontSize: 13, color: '#3a5068', textAlign: 'left',
+        }}
+      >
+        {files.length > 0 ? '📎 Add another file' : '📎 Choose file…'}
+      </button>
+    </div>
   );
 }
 
@@ -205,7 +189,6 @@ const SKU_DIM_NPI = [
 
 function SkuDimensionsField({ value, onChange, sessionSkus, mandatory, label, isNPI }) {
   const [expanded, setExpanded] = useState({});
-
   const fields = isNPI ? [...SKU_DIM_BASE, ...SKU_DIM_NPI] : SKU_DIM_BASE;
 
   const data = React.useMemo(() => {
@@ -223,49 +206,47 @@ function SkuDimensionsField({ value, onChange, sessionSkus, mandatory, label, is
   }
 
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>
+    <div style={styles.field}>
+      <span style={styles.label}>
         {label}
-        {mandatory && <Text style={styles.required}> *</Text>}
-      </Text>
+        {mandatory && <span style={styles.required}> *</span>}
+      </span>
       {(sessionSkus || []).map(sku => {
         const isOpen = !!expanded[sku.sys_id];
-        const done = completedCount(sku.sys_id);
+        const done  = completedCount(sku.sys_id);
         const total = fields.length;
         const allDone = done === total;
         return (
-          <View key={sku.sys_id} style={styles.skuAccordion}>
-            <TouchableOpacity
+          <div key={sku.sys_id} style={styles.skuAccordion}>
+            <button
               style={styles.skuAccordionHeader}
-              onPress={() => setExpanded(prev => ({ ...prev, [sku.sys_id]: !prev[sku.sys_id] }))}
-              activeOpacity={0.8}
+              onClick={() => setExpanded(prev => ({ ...prev, [sku.sys_id]: !prev[sku.sys_id] }))}
             >
-              <Text style={styles.skuAccordionTitle}>{isOpen ? '▾' : '▸'} {sku.label}</Text>
-              <View style={[styles.skuBadge, allDone && styles.skuBadgeDone]}>
-                <Text style={styles.skuBadgeText}>{done}/{total}</Text>
-              </View>
-            </TouchableOpacity>
+              <span style={styles.skuAccordionTitle}>{isOpen ? '▾' : '▸'} {sku.label}</span>
+              <span style={{ ...styles.skuBadge, ...(allDone ? styles.skuBadgeDone : {}) }}>
+                <span style={styles.skuBadgeText}>{done}/{total}</span>
+              </span>
+            </button>
             {isOpen && (
-              <View style={styles.skuAccordionBody}>
+              <div style={styles.skuAccordionBody}>
                 {fields.map(f => (
-                  <View key={f.key} style={{ marginBottom: 12 }}>
-                    <Text style={styles.skuFieldLabel}>* {f.label} <Text style={styles.skuFieldHint}>({f.hint})</Text></Text>
-                    <TextInput
+                  <div key={f.key} style={{ marginBottom: 12 }}>
+                    <span style={styles.skuFieldLabel}>* {f.label} <span style={styles.skuFieldHint}>({f.hint})</span></span>
+                    <input
                       style={styles.textInput}
                       value={(data[sku.sys_id] || {})[f.key] || ''}
-                      onChangeText={v => update(sku.sys_id, f.key, v)}
+                      onChange={e => update(sku.sys_id, f.key, e.target.value)}
                       placeholder={f.hint}
-                      placeholderTextColor="#9aabb8"
-                      keyboardType="numeric"
+                      type="number"
                     />
-                  </View>
+                  </div>
                 ))}
-              </View>
+              </div>
             )}
-          </View>
+          </div>
         );
       })}
-    </View>
+    </div>
   );
 }
 
@@ -274,182 +255,162 @@ function SkuDimensionsField({ value, onChange, sessionSkus, mandatory, label, is
 // ─────────────────────────────────────────────
 
 const CHOOSE_SKUS_RE = /choose sku/i;
-
 const CHOICE_ORDER = ['no', 'yes', 'n/a', 'na'];
+
 function sortChoices(choices) {
   if (!choices) return [];
   return [...choices].sort((a, b) => {
     const ai = CHOICE_ORDER.indexOf((a.label || '').toLowerCase());
     const bi = CHOICE_ORDER.indexOf((b.label || '').toLowerCase());
-    const aRank = ai === -1 ? 999 : ai;
-    const bRank = bi === -1 ? 999 : bi;
-    return aRank - bRank;
+    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
   });
 }
 
 function QuestionField({ question, value, onChange, sessionSkus, isNPI }) {
   const { datatype, choices, name, question: questionText, mandatory } = question;
-  const [inputHeight, setInputHeight] = React.useState(80);
-  const inputHeightRef = React.useRef(80);
-  const webInputRef = React.useRef(null);
+  const textareaRef = React.useRef(null);
 
-  // On web, auto-resize by reading scrollHeight imperatively — no setState loop
+  // Auto-resize textarea
   React.useEffect(() => {
-    if (Platform.OS !== 'web' || datatype !== 'string') return;
-    const el = webInputRef.current;
+    if (datatype !== 'string') return;
+    const el = textareaRef.current;
     if (!el) return;
-    const node = el._node || el; // RN Web wraps the DOM element
-    if (!node || !node.style) return;
-    node.style.height = 'auto';
-    node.style.height = Math.max(80, node.scrollHeight) + 'px';
+    el.style.height = 'auto';
+    el.style.height = Math.max(80, el.scrollHeight) + 'px';
   }, [value, datatype]);
 
   const label = questionText || name;
 
-  // "SKUs Assembly and Dimensions" macro — per-SKU accordion form
   if (/sku.*assembly|assembly.*dimension|skus\s+assembly/i.test(label) || /sku.*assembly|assembly.*dimension|skus\s+assembly/i.test(name)) {
     return <SkuDimensionsField value={value} onChange={onChange} sessionSkus={sessionSkus} mandatory={mandatory} label={label} isNPI={isNPI} />;
   }
 
-  // "Choose SKUs" — multi-select from the session SKUs regardless of datatype
   if (CHOOSE_SKUS_RE.test(label) || CHOOSE_SKUS_RE.test(name)) {
     const selected = value ? value.split(',').filter(Boolean) : [];
     const toggle = (id) => {
-      const next = selected.includes(id)
-        ? selected.filter(x => x !== id)
-        : [...selected, id];
+      const next = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
       onChange(next.join(','));
     };
     const skus = sessionSkus || [];
     return (
-      <View style={styles.field}>
-        <Text style={styles.label}>
+      <div style={styles.field}>
+        <span style={styles.label}>
           {label}
-          {mandatory && <Text style={styles.required}> *</Text>}
-        </Text>
-        {skus.length === 0 && (
-          <Text style={styles.attachmentNote}>No SKUs selected for this session.</Text>
-        )}
+          {mandatory && <span style={styles.required}> *</span>}
+        </span>
+        {skus.length === 0 && <span style={styles.attachmentNote}>No SKUs selected for this session.</span>}
         {skus.map((sku) => {
           const isOn = selected.includes(sku.sys_id);
           return (
-            <TouchableOpacity
+            <button
               key={sku.sys_id}
-              style={[styles.choiceRow, isOn && styles.choiceSelected]}
-              onPress={() => toggle(sku.sys_id)}
-              activeOpacity={0.7}
+              style={{ ...styles.choiceRow, ...(isOn ? styles.choiceSelected : {}) }}
+              onClick={() => toggle(sku.sys_id)}
             >
-              <View style={[styles.checkbox, isOn && styles.checkboxSelected]}>
-                {isOn && <Text style={styles.checkmark}>✓</Text>}
-              </View>
-              <Text style={[styles.choiceLabel, isOn && styles.choiceLabelSelected]}>
+              <div style={{ ...styles.checkbox, ...(isOn ? styles.checkboxSelected : {}) }}>
+                {isOn && <span style={styles.checkmark}>✓</span>}
+              </div>
+              <span style={{ ...styles.choiceLabel, ...(isOn ? styles.choiceLabelSelected : {}) }}>
                 {sku.label}
-              </Text>
-            </TouchableOpacity>
+              </span>
+            </button>
           );
         })}
-      </View>
+      </div>
     );
   }
 
   if (datatype === 'choice') {
     return (
-      <View style={styles.field}>
-        <Text style={styles.label}>
+      <div style={styles.field}>
+        <span style={styles.label}>
           {label}
-          {mandatory && <Text style={styles.required}> *</Text>}
-        </Text>
+          {mandatory && <span style={styles.required}> *</span>}
+        </span>
         {(/(complete this category|want to complete)/i.test(label) ? (choices || []) : sortChoices(choices)).map((choice) => (
-          <TouchableOpacity
+          <button
             key={choice.sys_id}
-            style={[styles.choiceRow, value === choice.sys_id && styles.choiceSelected]}
-            onPress={() => onChange(value === choice.sys_id ? '' : choice.sys_id)}
-            activeOpacity={0.7}
+            style={{ ...styles.choiceRow, ...(value === choice.sys_id ? styles.choiceSelected : {}) }}
+            onClick={() => onChange(value === choice.sys_id ? '' : choice.sys_id)}
           >
-            <View style={[styles.radio, value === choice.sys_id && styles.radioSelected]} />
-            <Text style={[styles.choiceLabel, value === choice.sys_id && styles.choiceLabelSelected]}>
+            <div style={{ ...styles.radio, ...(value === choice.sys_id ? styles.radioSelected : {}) }} />
+            <span style={{ ...styles.choiceLabel, ...(value === choice.sys_id ? styles.choiceLabelSelected : {}) }}>
               {choice.label}
-            </Text>
-          </TouchableOpacity>
+            </span>
+          </button>
         ))}
-      </View>
+      </div>
     );
   }
 
   if (datatype === 'boolean') {
     return (
-      <View style={styles.field}>
-        <Text style={styles.label}>
+      <div style={styles.field}>
+        <span style={styles.label}>
           {label}
-          {mandatory && <Text style={styles.required}> *</Text>}
-        </Text>
+          {mandatory && <span style={styles.required}> *</span>}
+        </span>
         {['Yes', 'No'].map((opt) => {
           const boolVal = opt === 'Yes' ? 'true' : 'false';
           return (
-            <TouchableOpacity
+            <button
               key={opt}
-              style={[styles.choiceRow, value === boolVal && styles.choiceSelected]}
-              onPress={() => onChange(value === boolVal ? '' : boolVal)}
-              activeOpacity={0.7}
+              style={{ ...styles.choiceRow, ...(value === boolVal ? styles.choiceSelected : {}) }}
+              onClick={() => onChange(value === boolVal ? '' : boolVal)}
             >
-              <View style={[styles.radio, value === boolVal && styles.radioSelected]} />
-              <Text style={[styles.choiceLabel, value === boolVal && styles.choiceLabelSelected]}>
+              <div style={{ ...styles.radio, ...(value === boolVal ? styles.radioSelected : {}) }} />
+              <span style={{ ...styles.choiceLabel, ...(value === boolVal ? styles.choiceLabelSelected : {}) }}>
                 {opt}
-              </Text>
-            </TouchableOpacity>
+              </span>
+            </button>
           );
         })}
-      </View>
+      </div>
     );
   }
 
   if (datatype === 'attachment') {
     return (
-      <View style={styles.field}>
-        <Text style={styles.label}>
+      <div style={styles.field}>
+        <span style={styles.label}>
           {label}
-          {mandatory && <Text style={styles.required}> *</Text>}
-        </Text>
-        {Platform.OS === 'web'
-          ? <WebFileInput value={value} onChange={onChange} />
-          : <Text style={styles.attachmentNote}>📎 Attachment upload not supported on this platform.</Text>
-        }
-      </View>
+          {mandatory && <span style={styles.required}> *</span>}
+        </span>
+        <WebFileInput value={value} onChange={onChange} />
+      </div>
     );
   }
 
-  // string, custom, scale, numeric — text input
+  // string, custom, scale, numeric
   return (
-    <View style={styles.field}>
-      <Text style={styles.label}>
+    <div style={styles.field}>
+      <span style={styles.label}>
         {label}
-        {mandatory && <Text style={styles.required}> *</Text>}
-      </Text>
-      <TextInput
-        ref={Platform.OS === 'web' && datatype === 'string' ? webInputRef : undefined}
-        style={[styles.textInput, datatype === 'string' && { minHeight: Platform.OS === 'web' ? 80 : inputHeight }]}
-        value={value || ''}
-        onChangeText={onChange}
-        multiline={datatype === 'string'}
-        onContentSizeChange={datatype === 'string' && Platform.OS !== 'web'
-          ? (e) => {
-              const h = Math.max(80, e.nativeEvent.contentSize.height + 16);
-              if (h !== inputHeightRef.current) {
-                inputHeightRef.current = h;
-                setInputHeight(h);
-              }
-            }
-          : undefined}
-        placeholder="Enter response…"
-        placeholderTextColor="#9aabb8"
-        keyboardType={datatype === 'numeric' || datatype === 'scale' ? 'numeric' : 'default'}
-      />
-    </View>
+        {mandatory && <span style={styles.required}> *</span>}
+      </span>
+      {datatype === 'string' ? (
+        <textarea
+          ref={textareaRef}
+          style={{ ...styles.textInput, minHeight: 80, resize: 'none', overflow: 'hidden' }}
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Enter response…"
+        />
+      ) : (
+        <input
+          style={styles.textInput}
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          placeholder="Enter response…"
+          type={datatype === 'numeric' || datatype === 'scale' ? 'number' : 'text'}
+        />
+      )}
+    </div>
   );
 }
 
 // ─────────────────────────────────────────────
-// Main screen
+// Tab bar
 // ─────────────────────────────────────────────
 
 function WebTabBar({ categories, activeCategoryIndex, onSelect, isCategoryComplete }) {
@@ -467,79 +428,79 @@ function WebTabBar({ categories, activeCategoryIndex, onSelect, isCategoryComple
     intervalRef.current = null;
   }
 
-  return React.createElement('div', {
-    onMouseMove: (e) => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      if (x < 80) startScroll(-1);
-      else if (x > rect.width - 80) startScroll(1);
-      else stopScroll();
-    },
-    onMouseLeave: stopScroll,
-    style: { backgroundColor: '#ffffff', borderBottom: '1px solid #d8dde6' },
-  },
-    React.createElement('div', {
-      ref: scrollRef,
-      style: {
-        display: 'flex', overflowX: 'auto', scrollbarWidth: 'none',
-        msOverflowStyle: 'none', padding: '0 8px', gap: 0,
-      },
-    },
-      ...categories.map((cat, idx) => {
-        const isActive = idx === activeCategoryIndex;
-        const complete = isCategoryComplete(cat);
-        return React.createElement('button', {
-          key: cat.catID,
-          onClick: () => onSelect(idx),
-          style: {
-            padding: '10px 16px', border: 'none', borderBottom: isActive ? '2px solid #0070d2' : '2px solid transparent',
-            cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 12,
-            fontWeight: isActive ? '600' : '400', flexShrink: 0,
-            backgroundColor: 'transparent',
-            color: isActive ? '#0070d2' : '#67717e',
-            marginBottom: '-1px',
-          },
-        },
-          cat.name,
-          !complete && React.createElement('span', { style: { color: '#d93025', fontWeight: '700' } }, ' *')
-        );
-      })
-    )
+  return (
+    <div
+      onMouseMove={(e) => {
+        const rect = e.currentTarget.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x < 80) startScroll(-1);
+        else if (x > rect.width - 80) startScroll(1);
+        else stopScroll();
+      }}
+      onMouseLeave={stopScroll}
+      style={{ backgroundColor: '#ffffff', borderBottom: '1px solid #d8dde6' }}
+    >
+      <div
+        ref={scrollRef}
+        style={{
+          display: 'flex', overflowX: 'auto', scrollbarWidth: 'none',
+          msOverflowStyle: 'none', padding: '0 8px', gap: 0,
+        }}
+      >
+        {categories.map((cat, idx) => {
+          const isActive  = idx === activeCategoryIndex;
+          const complete  = isCategoryComplete(cat);
+          return (
+            <button
+              key={cat.catID}
+              onClick={() => onSelect(idx)}
+              style={{
+                padding: '10px 16px', border: 'none',
+                borderBottom: isActive ? '2px solid #0070d2' : '2px solid transparent',
+                cursor: 'pointer', whiteSpace: 'nowrap', fontSize: 12,
+                fontWeight: isActive ? '600' : '400', flexShrink: 0,
+                backgroundColor: 'transparent',
+                color: isActive ? '#0070d2' : '#67717e',
+                marginBottom: '-1px',
+              }}
+            >
+              {cat.name}
+              {!complete && <span style={{ color: '#d93025', fontWeight: '700' }}> *</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
-export default function AssessmentPlayer({ route, navigation }) {
-  const { assessmentData, instanceSysId, fromDeepLink } = route.params || {};
-  const isOnline = useOnlineStatus();
+// ─────────────────────────────────────────────
+// Main screen
+// ─────────────────────────────────────────────
 
-  // Fall back to the in-memory store when navigating from SkuSelection (no params on web)
-  const initialPayload = assessmentData?.body || assessmentData || assessmentStore.get() || null;
-  const [payload, setPayload] = useState(initialPayload);
-  const [loading, setLoading] = useState(!initialPayload);
-  const [error, setError] = useState(null);
+export default function AssessmentPlayer() {
+  const navigate  = useNavigate();
+  const isOnline  = useOnlineStatus();
+
+  const initialPayload = assessmentStore.get() || null;
+  const [payload,  setPayload]  = useState(initialPayload);
+  const [loading,  setLoading]  = useState(!initialPayload);
+  const [error,    setError]    = useState(null);
 
   const [sessionSkus, setSessionSkus] = useState([]);
-
-  // answers: { [metricID]: string }
-  const [answers, setAnswers] = useState({});
+  const [answers,     setAnswers]     = useState({});
 
   const [activeCategoryIndex, setActiveCategoryIndex] = useState(0);
-  const [submitting, setSubmitting] = useState(false);
-  const [leaveVisible, setLeaveVisible] = useState(false);
-  const leaveActionRef = useRef(null);
-  const [uploadProgress, setUploadProgress] = useState(null); // { done, total } | null
+  const [submitting,   setSubmitting]   = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const categoryHydrated = useRef(false);
 
-  // Persist answers and category index to AsyncStorage on every change
+  // Persist answers to localStorage on every change
   useEffect(() => {
     if (Object.keys(answers).length === 0) return;
     assessmentStore.saveAnswers(answers).catch(e => {
       if (e?.message === 'QUOTA_EXCEEDED') {
-        if (Platform.OS === 'web') {
-          window.alert('Storage full — your last photo could not be saved. Submit what you have or remove some photos to continue.');
-        } else {
-          Alert.alert('Storage Full', 'Your last photo could not be saved. Submit what you have or remove some photos to continue.');
-        }
+        window.alert('Storage full — your last photo could not be saved. Submit what you have or remove some photos to continue.');
       }
     });
   }, [answers]);
@@ -553,17 +514,15 @@ export default function AssessmentPlayer({ route, navigation }) {
     assessmentStore.loadSkus().then(skus => { if (skus) setSessionSkus(skus); });
   }, []);
 
-  // Filter SKU lines in the Audit Information description to only show selected SKUs
+  // Filter SKU lines in description to only show selected SKUs
   useEffect(() => {
     if (!payload || sessionSkus.length === 0) return;
-
     const auditCat = payload.categories?.find(c => /audit info/i.test(c.name));
     if (!auditCat) return;
     const descQ = auditCat.questions?.find(q => /^description$/i.test(q.name));
     if (!descQ) return;
 
     const skuLabels = new Set(sessionSkus.map(s => s.label.toLowerCase()));
-
     setAnswers(prev => {
       const current = prev[descQ.metricID] || descQ.existing_string_value || '';
       if (!current) return prev;
@@ -580,7 +539,7 @@ export default function AssessmentPlayer({ route, navigation }) {
     });
   }, [sessionSkus, payload]);
 
-  // ── Load payload from deep link ────────────────────────
+  // Load payload (from store or hydrate from localStorage on page refresh)
   useEffect(() => {
     if (payload) {
       prefillAnswers(payload);
@@ -588,49 +547,16 @@ export default function AssessmentPlayer({ route, navigation }) {
       return;
     }
 
-    if (!instanceSysId) {
-      // Page was refreshed — try to restore from AsyncStorage
-      assessmentStore.hydrate().then(async stored => {
-        if (stored) {
-          setPayload(stored);
-          await prefillAnswers(stored);
-        } else {
-          setError('No assessment data or instance ID provided.');
-        }
-        setLoading(false);
-      });
-      return;
-    }
-
-    async function load() {
-      setLoading(true);
-      try {
-        // Try cache first
-        const cached = await getCached(instanceSysId);
-        if (cached) {
-          setPayload(cached);
-          await prefillAnswers(cached);
-        }
-
-        // If online, always fetch fresh
-        if (isOnline) {
-          const fresh = await fetchAssessmentByInstance(instanceSysId);
-          const body = fresh?.result?.body || fresh?.body || fresh;
-          await setCached(instanceSysId, body);
-          setPayload(body);
-          await prefillAnswers(body);
-        } else if (!cached) {
-          setError('No network connection and no cached data for this assessment.');
-        }
-      } catch (e) {
-        setError(e.message || 'Failed to load assessment.');
-      } finally {
-        setLoading(false);
+    assessmentStore.hydrate().then(async stored => {
+      if (stored) {
+        setPayload(stored);
+        await prefillAnswers(stored);
+      } else {
+        setError('No assessment data found. Please open an assessment from ServiceNow.');
       }
-    }
-
-    load();
-  }, [instanceSysId]);
+      setLoading(false);
+    });
+  }, []);
 
   async function prefillAnswers(data) {
     const prefilled = {};
@@ -651,7 +577,6 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     let finalAnswers = saved && Object.keys(saved).length > 0 ? { ...prefilled, ...saved } : prefilled;
 
-    // Apply SKU filter to description immediately so saved answers can't overwrite a filtered value
     const skusForFilter = loadedSkus || [];
     if (skusForFilter.length > 0) {
       const auditCat = data.categories?.find(c => /audit info/i.test(c.name));
@@ -680,34 +605,8 @@ export default function AssessmentPlayer({ route, navigation }) {
     if (savedIndex > 0) setActiveCategoryIndex(savedIndex);
   }
 
-  // ── Update header branding when payload loads ─────────
-  useEffect(() => {
-    navigation.setOptions({
-      title: '',
-      headerLeft: () => (
-        <Image
-          source={Platform.OS === 'web' ? { uri: '/rtg-logo.png' } : require('../../assets/Rtg logo.png')}
-          style={{ height: 34, width: 155, resizeMode: 'contain', marginLeft: 20 }}
-        />
-      ),
-      headerStyle: { backgroundColor: '#1b1b38', height: 56 },
-    });
-  }, []);
-
-  // ── Warn before leaving with unsaved answers ───────────
-  useEffect(() => {
-    const unsub = navigation.addListener('beforeRemove', (e) => {
-      if (e.data.action.type !== 'GO_BACK' && e.data.action.type !== 'POP') return;
-      e.preventDefault();
-      leaveActionRef.current = e.data.action;
-      setLeaveVisible(true);
-    });
-    return unsub;
-  }, [navigation]);
-
   // ── Dependency resolution ──────────────────────────────
   function isVisible(question, categoryQuestions) {
-    // Category gating: hide all other questions until "Yes" is explicitly selected.
     const gatingQ = categoryQuestions.find(q =>
       /(complete this category|want to complete)/i.test(q.question || q.name)
     );
@@ -718,7 +617,6 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     if (!question.depends_on) return true;
 
-    // depends_on may store the parent's internal name OR its metricID (sys_id)
     const parent = categoryQuestions.find(
       q => q.name === question.depends_on || q.metricID === question.depends_on
     );
@@ -727,18 +625,14 @@ export default function AssessmentPlayer({ route, navigation }) {
     const parentAnswer = answers[parent.metricID];
     if (!parentAnswer) return false;
 
-    // displayed_when holds the sys_id of the choice that triggers display
     return parentAnswer === question.displayed_when;
   }
 
-  // ── Answer setter ──────────────────────────────────────
   const setAnswer = useCallback((metricID, value) => {
     setAnswers(prev => ({ ...prev, [metricID]: value }));
   }, []);
 
-  // ── Category completion check ──────────────────────────
   function isCategoryComplete(cat) {
-    // Category gating: "Do you want to complete this category?" answered "No" → treat as complete
     const gatingQ = (cat.questions || []).find(q =>
       /(complete this category|want to complete)/i.test(q.question || q.name)
     );
@@ -753,8 +647,6 @@ export default function AssessmentPlayer({ route, navigation }) {
       .filter(q => isVisible(q, cat.questions))
       .every(q => {
         const label = q.question || q.name || '';
-
-        // SKU dimensions — every SKU must have every field filled
         if (/sku.*assembly|assembly.*dimension/i.test(label)) {
           const val = answers[q.metricID];
           if (!val) return false;
@@ -767,7 +659,6 @@ export default function AssessmentPlayer({ route, navigation }) {
             });
           } catch { return false; }
         }
-
         const val = answers[q.metricID];
         if (Array.isArray(val)) return val.length > 0;
         return val !== undefined && val !== '' && val !== null;
@@ -777,11 +668,7 @@ export default function AssessmentPlayer({ route, navigation }) {
   // ── Submit ─────────────────────────────────────────────
   function handleSubmitPress() {
     if (!isOnline) {
-      if (Platform.OS === 'web') {
-        window.alert('No internet connection. Please connect to Wi-Fi or mobile data before submitting. Your answers are saved and will still be here when you reconnect.');
-      } else {
-        Alert.alert('No Connection', 'Please connect to Wi-Fi or mobile data before submitting.\n\nYour answers are saved and will still be here when you reconnect.');
-      }
+      window.alert('No internet connection. Please connect to Wi-Fi or mobile data before submitting. Your answers are saved and will still be here when you reconnect.');
       return;
     }
 
@@ -790,43 +677,27 @@ export default function AssessmentPlayer({ route, navigation }) {
         .filter(c => !isCategoryComplete(c))
         .map(c => `  • ${c.name}`)
         .join('\n');
-      if (Platform.OS === 'web') {
-        window.alert(`Please complete all required fields (*) in:\n\n${incomplete}`);
-      } else {
-        Alert.alert('Incomplete Categories', `Please complete all required fields (*) in:\n\n${incomplete}`, [{ text: 'OK' }]);
-      }
+      window.alert(`Please complete all required fields (*) in:\n\n${incomplete}`);
       return;
     }
 
-    if (Platform.OS === 'web') {
-      if (window.confirm('Once submitted, answers cannot be changed. Are you sure?')) {
-        doSubmit();
-      }
-    } else {
-      Alert.alert(
-        'Submit Assessment',
-        'Once submitted, answers cannot be changed. Are you sure?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Submit', style: 'default', onPress: () => doSubmit() },
-        ]
-      );
+    if (window.confirm('Once submitted, answers cannot be changed. Are you sure?')) {
+      doSubmit();
     }
   }
 
   async function doSubmit() {
     if (!payload) return;
 
-    const preKnownInstanceId = instanceSysId || payload.instance_sys_id;
-    const metricTypeSysId = payload.sys_id;
-    const submittedAt = new Date().toISOString();
+    const preKnownInstanceId = payload.instance_sys_id;
+    const metricTypeSysId   = payload.sys_id;
+    const submittedAt        = new Date().toISOString();
 
     const questionMap = {};
     (payload.categories || []).forEach(cat =>
       (cat.questions || []).forEach(q => { questionMap[q.metricID] = q; })
     );
 
-    // Collect attachment answers for separate upload after submit
     const attachmentAnswers = [];
 
     const submitCategories = (payload.categories || []).map(cat => ({
@@ -834,32 +705,26 @@ export default function AssessmentPlayer({ route, navigation }) {
       questions: (cat.questions || [])
         .filter(q => isVisible(q, cat.questions))
         .filter(q => {
-            const v = answers[q.metricID];
-            return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== '');
-          })
+          const v = answers[q.metricID];
+          return Array.isArray(v) ? v.length > 0 : (v !== undefined && v !== '');
+        })
         .map(q => {
-          const raw = answers[q.metricID] || '';
+          const raw      = answers[q.metricID] || '';
           const question = questionMap[q.metricID];
 
           if (question?.datatype === 'choice') {
             const choice = (question.choices || []).find(c => c.sys_id === raw);
-            return {
-              metricID: q.metricID,
-              value: choice ? choice.value : raw,
-              string_value: choice ? choice.label : raw,
-            };
+            return { metricID: q.metricID, value: choice ? choice.value : raw, string_value: choice ? choice.label : raw };
           }
 
           if (question?.datatype === 'boolean') {
-            const boolVal = raw === 'true' ? '1' : '0';
             return {
               metricID: q.metricID,
-              value: boolVal,
+              value: raw === 'true' ? '1' : '0',
               string_value: raw === 'true' ? 'Yes' : 'No',
             };
           }
 
-          // Strip file refs from body — upload separately after submit
           if (question?.datatype === 'attachment') {
             const fileList = Array.isArray(raw) ? raw : (raw && (raw.startsWith('data:') || raw.startsWith('idb:')) ? [raw] : []);
             fileList.forEach(fileRef => attachmentAnswers.push({ metricID: q.metricID, fileRef }));
@@ -872,26 +737,21 @@ export default function AssessmentPlayer({ route, navigation }) {
 
     const submitBody = {
       metric_type_sys_id: metricTypeSysId,
-      instance_sys_id: preKnownInstanceId,
-      task_sys_id: payload.task_sys_id || null,
-      submitted_by: null,
-      submitted_at: submittedAt,
-      categories: submitCategories,
+      instance_sys_id:    preKnownInstanceId,
+      task_sys_id:        payload.task_sys_id || null,
+      submitted_by:       null,
+      submitted_at:       submittedAt,
+      categories:         submitCategories,
     };
 
     setSubmitting(true);
     try {
       const result = await submitAssessment(submitBody);
-
-      // For fresh assessments (no pre-known instance), SN creates a new instance on submit —
-      // use the returned sys_id for all subsequent calls.
       const instanceId = preKnownInstanceId || result?.body?.instance_sys_id;
 
-      // Upload all attachments in parallel, tracking progress and collecting failures
       if (attachmentAnswers.length > 0 && instanceId) {
         setUploadProgress({ done: 0, total: attachmentAnswers.length });
         const failed = [];
-        // Upload sequentially to avoid loading all blobs into memory at once
         for (let i = 0; i < attachmentAnswers.length; i++) {
           const { metricID, fileRef } = attachmentAnswers[i];
           try {
@@ -901,7 +761,7 @@ export default function AssessmentPlayer({ route, navigation }) {
               if (!entry?.blob) throw new Error('Photo missing from local storage');
               base64 = await blobToBase64(entry.blob);
             } else {
-              base64 = fileRef; // legacy base64 format
+              base64 = fileRef;
             }
             await uploadAttachment(instanceId, metricID, base64);
             if (fileRef.startsWith('idb:')) photoStore.remove(fileRef);
@@ -919,7 +779,6 @@ export default function AssessmentPlayer({ route, navigation }) {
         }
       }
 
-      // Only mark the NP task closed-complete after all attachments confirmed uploaded
       if (instanceId) {
         const instanceNumber = result?.body?.instance_number || instanceId;
         await assessmentStore.savePendingComplete({ instanceId, submittedAt, instanceNumber });
@@ -929,38 +788,31 @@ export default function AssessmentPlayer({ route, navigation }) {
 
       await assessmentStore.clear();
       await photoStore.clear();
-      navigation.replace('SubmissionSuccess', {
-        instanceNumber: result?.body?.instance_number || instanceId,
-        answered: result?.body?.answered ?? null,
-        skipped: result?.body?.skipped ?? null,
-        submittedAt,
+      navigate('/success', {
+        replace: true,
+        state: {
+          instanceNumber: result?.body?.instance_number || instanceId,
+          answered:       result?.body?.answered ?? null,
+          skipped:        result?.body?.skipped   ?? null,
+          submittedAt,
+        },
       });
     } catch (e) {
       const msg = e.message || '';
       const isNetworkError = msg === 'Failed to fetch' || msg.includes('ERR_INTERNET_DISCONNECTED') || msg.includes('Network request failed') || msg.includes('Load failed');
-
       const isCompleteFailure = msg.toLowerCase().includes('complete');
+
       if (isCompleteFailure) {
-        // Answers are in SN — pending complete is already saved and will retry on next open
         await assessmentStore.clear();
         await photoStore.clear();
-        navigation.replace('SubmissionSuccess', {
-          instanceNumber: null,
-          answered: null,
-          skipped: null,
-          submittedAt,
-        });
+        navigate('/success', { replace: true, state: { instanceNumber: null, answered: null, skipped: null, submittedAt } });
         return;
       }
 
       const userMsg = isNetworkError
         ? 'Unable to reach the server. Please check your connection and try again.\n\nYour answers are still saved.'
         : `Submission failed: ${msg || 'Please try again.'}`;
-      if (Platform.OS === 'web') {
-        window.alert(userMsg);
-      } else {
-        Alert.alert('Submission Failed', userMsg);
-      }
+      window.alert(userMsg);
     } finally {
       setSubmitting(false);
     }
@@ -970,48 +822,45 @@ export default function AssessmentPlayer({ route, navigation }) {
 
   if (loading) {
     return (
-      <View style={styles.center}>
-        <ActivityIndicator size="large" color="#0a2540" />
-      </View>
+      <div style={styles.center}>
+        <Spinner />
+      </div>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryBtn} onPress={() => navigation.goBack()}>
-          <Text style={styles.retryBtnText}>Go Back</Text>
-        </TouchableOpacity>
-      </View>
+      <div style={styles.center}>
+        <p style={styles.errorText}>{error}</p>
+        <button style={styles.retryBtn} onClick={() => navigate('/')}>
+          Go Back
+        </button>
+      </div>
     );
   }
 
   if (!payload) return null;
 
-  const categories = payload.categories || [];
-  const activeCategory = categories[activeCategoryIndex];
-  const isNPI = !!(payload.isNPI || /^npi/i.test(payload.title || ''));
-  const allComplete = categories.every(isCategoryComplete);
+  const categories      = payload.categories || [];
+  const activeCategory  = categories[activeCategoryIndex];
+  const isNPI           = !!(payload.isNPI || /^npi/i.test(payload.title || ''));
+  const allComplete     = categories.every(isCategoryComplete);
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-    >
-      {/* ── Page title band ── */}
-      <View style={styles.pageTitleBand}>
-        <Text style={styles.pageTitleText} numberOfLines={1}>{payload?.title || 'Assessment'}</Text>
-      </View>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
+      {/* App header with RTG logo */}
+      <div style={{ backgroundColor: '#1b1b38', height: 56, display: 'flex', alignItems: 'center', paddingLeft: 20, flexShrink: 0 }}>
+        <img src={rtgLogo} style={{ height: 34, width: 155, objectFit: 'contain' }} alt="RTG" />
+      </div>
 
-      {/* ── Offline banner ── */}
+      {/* Offline banner */}
       {!isOnline && (
-        <View style={styles.offlineBanner}>
-          <Text style={styles.offlineBannerText}>⚡ Offline — answers are saved. Reconnect to submit.</Text>
-        </View>
+        <div style={styles.offlineBanner}>
+          <span style={styles.offlineBannerText}>⚡ Offline — answers are saved. Reconnect to submit.</span>
+        </div>
       )}
 
-      {/* ── Category tabs ── */}
+      {/* Category tabs */}
       <WebTabBar
         categories={categories}
         activeCategoryIndex={activeCategoryIndex}
@@ -1019,86 +868,62 @@ export default function AssessmentPlayer({ route, navigation }) {
         isCategoryComplete={isCategoryComplete}
       />
 
-      {/* ── Questions ── */}
-      <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {activeCategory && (
-          <>
-            <Text style={styles.categoryTitle}>{activeCategory.name}</Text>
-            {(activeCategory.questions || [])
-              .filter(q => !/will this standard be exempted/i.test(q.question || q.name))
-              .filter(q => isVisible(q, activeCategory.questions))
-              .sort((a, b) => Number(a.order) - Number(b.order))
-              .map(q => (
-                <QuestionField
-                  key={q.metricID}
-                  question={q}
-                  value={answers[q.metricID] || ''}
-                  onChange={(val) => setAnswer(q.metricID, val)}
-                  sessionSkus={sessionSkus}
-                  isNPI={isNPI}
-                />
-              ))}
-          </>
-        )}
+      {/* Page title band */}
+      <div style={styles.pageTitleBand}>
+        <span style={styles.pageTitleText}>{payload?.title || 'Assessment'}</span>
+      </div>
 
-        {/* ── Navigation between categories ── */}
-        <View style={styles.navRow}>
-          {activeCategoryIndex > 0 && (
-            <TouchableOpacity
-              style={styles.navBtn}
-              onPress={() => setActiveCategoryIndex(i => i - 1)}
-            >
-              <Text style={styles.navBtnText}>← Previous</Text>
-            </TouchableOpacity>
+      {/* Questions scroll area */}
+      <div style={{ flex: 1, overflowY: 'auto', backgroundColor: '#f2f4f7' }}>
+        <div style={{ padding: 16, paddingBottom: 40 }}>
+          {activeCategory && (
+            <>
+              <p style={styles.categoryTitle}>{activeCategory.name}</p>
+              {(activeCategory.questions || [])
+                .filter(q => !/will this standard be exempted/i.test(q.question || q.name))
+                .filter(q => isVisible(q, activeCategory.questions))
+                .sort((a, b) => Number(a.order) - Number(b.order))
+                .map(q => (
+                  <QuestionField
+                    key={q.metricID}
+                    question={q}
+                    value={answers[q.metricID] || ''}
+                    onChange={(val) => setAnswer(q.metricID, val)}
+                    sessionSkus={sessionSkus}
+                    isNPI={isNPI}
+                  />
+                ))}
+            </>
           )}
-          {activeCategoryIndex < categories.length - 1 ? (
-            <TouchableOpacity
-              style={[styles.navBtn, styles.navBtnPrimary]}
-              onPress={() => setActiveCategoryIndex(i => i + 1)}
-            >
-              <Text style={[styles.navBtnText, styles.navBtnTextPrimary]}>Next →</Text>
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              style={[styles.navBtn, styles.submitBtn, submitting && styles.submitBtnDisabled]}
-              onPress={handleSubmitPress}
-              disabled={submitting}
-            >
-              {submitting
-                ? uploadProgress
-                  ? <Text style={styles.submitBtnText}>
-                      Uploading… {Math.round(uploadProgress.done / uploadProgress.total * 100)}%
-                    </Text>
-                  : <ActivityIndicator color="#fff" size="small" />
-                : <Text style={styles.submitBtnText}>
-                    {allComplete ? 'Submit Assessment' : 'Submit Assessment (*)'}
-                  </Text>
-              }
-            </TouchableOpacity>
-          )}
-        </View>
-      </ScrollView>
 
-      {/* ── Leave confirmation modal ── */}
-      {leaveVisible && (
-        <View style={styles.overlay}>
-          <View style={styles.dialog}>
-            <Text style={styles.dialogTitle}>Leave Assessment?</Text>
-            <Text style={styles.dialogMsg}>
-              Your answers are saved. You can return to this assessment from the home screen.
-            </Text>
-            <View style={styles.dialogBtns}>
-              <TouchableOpacity style={styles.dialogCancel} onPress={() => setLeaveVisible(false)}>
-                <Text style={styles.dialogCancelText}>Stay</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.dialogLeave} onPress={() => { setLeaveVisible(false); navigation.dispatch(leaveActionRef.current); }}>
-                <Text style={styles.dialogLeaveText}>Leave</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      )}
-    </KeyboardAvoidingView>
+          {/* Navigation between categories */}
+          <div style={styles.navRow}>
+            {activeCategoryIndex > 0 && (
+              <button style={styles.navBtn} onClick={() => setActiveCategoryIndex(i => i - 1)}>
+                ← Previous
+              </button>
+            )}
+            {activeCategoryIndex < categories.length - 1 ? (
+              <button style={{ ...styles.navBtn, ...styles.navBtnPrimary }} onClick={() => setActiveCategoryIndex(i => i + 1)}>
+                Next →
+              </button>
+            ) : (
+              <button
+                style={{ ...styles.navBtn, ...styles.submitBtn, ...(submitting ? styles.submitBtnDisabled : {}) }}
+                onClick={handleSubmitPress}
+                disabled={submitting}
+              >
+                {submitting
+                  ? uploadProgress
+                    ? `Uploading… ${Math.round(uploadProgress.done / uploadProgress.total * 100)}%`
+                    : 'Submitting…'
+                  : allComplete ? 'Submit Assessment' : 'Submit Assessment (*)'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -1106,276 +931,95 @@ export default function AssessmentPlayer({ route, navigation }) {
 // Styles
 // ─────────────────────────────────────────────
 
-const styles = StyleSheet.create({
+const styles = {
   center: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#f5f7fa',
+    flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center',
+    padding: 24, minHeight: '100vh', backgroundColor: '#f5f7fa',
+    flexDirection: 'column',
   },
-  loadingText: {
-    marginTop: 12,
-    fontSize: 15,
-    color: '#5a7a8a',
-  },
-  errorText: {
-    fontSize: 15,
-    color: '#c0392b',
-    textAlign: 'center',
-    marginBottom: 16,
-  },
+  errorText: { fontSize: 15, color: '#c0392b', textAlign: 'center', marginBottom: 16 },
   retryBtn: {
-    backgroundColor: '#0070d2',
-    borderRadius: 4,
-    paddingVertical: 10,
-    paddingHorizontal: 24,
-  },
-  retryBtnText: {
-    color: '#fff',
-    fontWeight: '600',
+    backgroundColor: '#0070d2', borderRadius: 4,
+    paddingTop: 10, paddingBottom: 10, paddingLeft: 24, paddingRight: 24,
+    border: 'none', color: '#fff', fontWeight: '600',
   },
   pageTitleBand: {
     backgroundColor: '#ffffff',
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d8dde6',
+    paddingLeft: 20, paddingRight: 20, paddingTop: 14, paddingBottom: 14,
+    borderBottom: '1px solid #d8dde6', flexShrink: 0,
   },
-  pageTitleText: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#1b1b38',
-  },
+  pageTitleText: { fontSize: 20, fontWeight: '700', color: '#1b1b38' },
   offlineBanner: {
     backgroundColor: '#fff3cd',
-    paddingVertical: 6,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-    borderBottomWidth: 1,
-    borderBottomColor: '#ffc107',
+    paddingTop: 6, paddingBottom: 6, paddingLeft: 16, paddingRight: 16,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    borderBottom: '1px solid #ffc107', flexShrink: 0,
   },
-  offlineBannerText: {
-    color: '#856404',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  tabBar: {
-    backgroundColor: '#ffffff',
-    flexGrow: 0,
-    borderBottomWidth: 1,
-    borderBottomColor: '#d8dde6',
-  },
-  tab: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#0070d2',
-  },
-  tabText: {
-    color: '#67717e',
-    fontSize: 12,
-    fontWeight: '400',
-  },
-  tabTextActive: {
-    color: '#0070d2',
-    fontWeight: '600',
-  },
-  scroll: {
-    flex: 1,
-    backgroundColor: '#f2f4f7',
-  },
-  scrollContent: {
-    padding: 16,
-    paddingBottom: 40,
-  },
-  categoryTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#1b1b38',
-    marginBottom: 16,
-  },
+  offlineBannerText: { color: '#856404', fontSize: 12, fontWeight: '600' },
+  categoryTitle: { fontSize: 16, fontWeight: '700', color: '#1b1b38', marginBottom: 16, marginTop: 0 },
   field: {
-    backgroundColor: '#ffffff',
-    borderRadius: 4,
-    padding: 14,
-    marginBottom: 8,
-    borderWidth: 1,
-    borderColor: '#d8dde6',
+    backgroundColor: '#ffffff', borderRadius: 4, padding: 14,
+    marginBottom: 8, border: '1px solid #d8dde6',
+    display: 'flex', flexDirection: 'column',
   },
-  label: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1b1b38',
-    marginBottom: 10,
-    lineHeight: 20,
-  },
-  required: {
-    color: '#d93025',
-  },
+  label: { fontSize: 13, fontWeight: '600', color: '#1b1b38', marginBottom: 10, lineHeight: '20px', display: 'block' },
+  required: { color: '#d93025' },
   choiceRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 10,
-    borderRadius: 4,
-    marginBottom: 4,
-    backgroundColor: '#f8f9fb',
-    borderWidth: 1,
-    borderColor: '#d8dde6',
+    display: 'flex', flexDirection: 'row', alignItems: 'center',
+    paddingTop: 8, paddingBottom: 8, paddingLeft: 10, paddingRight: 10,
+    borderRadius: 4, marginBottom: 4,
+    backgroundColor: '#f8f9fb', border: '1px solid #d8dde6',
+    width: '100%', textAlign: 'left',
   },
-  choiceSelected: {
-    backgroundColor: '#e8f0fe',
-    borderColor: '#0070d2',
-  },
+  choiceSelected: { backgroundColor: '#e8f0fe', borderColor: '#0070d2' },
   radio: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: '#8a94a0',
-    marginRight: 10,
+    width: 16, height: 16, borderRadius: '50%',
+    border: '2px solid #8a94a0', marginRight: 10, flexShrink: 0,
   },
-  radioSelected: {
-    borderColor: '#0070d2',
-    backgroundColor: '#0070d2',
-  },
-  choiceLabel: {
-    fontSize: 13,
-    color: '#1b1b38',
-    flex: 1,
-  },
-  choiceLabelSelected: {
-    color: '#0070d2',
-    fontWeight: '600',
-  },
+  radioSelected: { borderColor: '#0070d2', backgroundColor: '#0070d2' },
+  choiceLabel: { fontSize: 13, color: '#1b1b38', flex: 1 },
+  choiceLabelSelected: { color: '#0070d2', fontWeight: '600' },
   textInput: {
-    borderWidth: 1,
-    borderColor: '#d8dde6',
-    borderRadius: 4,
-    padding: 10,
-    fontSize: 13,
-    color: '#1b1b38',
-    backgroundColor: '#ffffff',
-    textAlignVertical: 'top',
+    border: '1px solid #d8dde6', borderRadius: 4,
+    padding: 10, fontSize: 13, color: '#1b1b38',
+    backgroundColor: '#ffffff', width: '100%',
+    outline: 'none', boxSizing: 'border-box',
   },
-  attachmentNote: {
-    fontSize: 13,
-    color: '#67717e',
-    fontStyle: 'italic',
-  },
+  attachmentNote: { fontSize: 13, color: '#67717e', fontStyle: 'italic' },
   checkbox: {
-    width: 16,
-    height: 16,
-    borderRadius: 3,
-    borderWidth: 2,
-    borderColor: '#8a94a0',
-    marginRight: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 16, height: 16, borderRadius: 3,
+    border: '2px solid #8a94a0', marginRight: 10,
+    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  checkboxSelected: {
-    borderColor: '#0070d2',
-    backgroundColor: '#0070d2',
-  },
-  checkmark: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '700',
-    lineHeight: 14,
-  },
+  checkboxSelected: { borderColor: '#0070d2', backgroundColor: '#0070d2' },
+  checkmark: { color: '#fff', fontSize: 11, fontWeight: '700', lineHeight: '14px' },
   navRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 10,
+    display: 'flex', flexDirection: 'row', justifyContent: 'space-between',
+    marginTop: 16, gap: 10,
   },
   navBtn: {
-    flex: 1,
-    paddingVertical: 11,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#d8dde6',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
+    flex: 1, paddingTop: 11, paddingBottom: 11, borderRadius: 4,
+    border: '1px solid #d8dde6', backgroundColor: '#ffffff',
+    fontSize: 13, fontWeight: '600', color: '#1b1b38',
   },
-  navBtnPrimary: {
-    backgroundColor: '#0070d2',
-    borderColor: '#0070d2',
-  },
-  navBtnText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1b1b38',
-  },
-  navBtnTextPrimary: {
-    color: '#ffffff',
-  },
-  submitBtn: {
-    flex: 1,
-    backgroundColor: '#0070d2',
-    borderColor: '#0070d2',
-  },
-  submitBtnDisabled: {
-    backgroundColor: '#8a94a0',
-    borderColor: '#8a94a0',
-    opacity: 0.7,
-  },
-  submitBtnText: {
-    color: '#ffffff',
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  tabIncomplete: {
-    color: '#d93025',
-    fontWeight: '700',
-  },
-  skuAccordion: {
-    borderWidth: 1, borderColor: '#d8dde6', borderRadius: 4,
-    marginBottom: 8, overflow: 'hidden',
-  },
+  navBtnPrimary: { backgroundColor: '#0070d2', borderColor: '#0070d2', color: '#ffffff' },
+  submitBtn: { flex: 1, backgroundColor: '#0070d2', borderColor: '#0070d2', color: '#ffffff', fontWeight: '700' },
+  submitBtnDisabled: { backgroundColor: '#8a94a0', borderColor: '#8a94a0', opacity: 0.7 },
+  skuAccordion: { border: '1px solid #d8dde6', borderRadius: 4, marginBottom: 8, overflow: 'hidden' },
   skuAccordionHeader: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#f2f4f7', paddingVertical: 10, paddingHorizontal: 12,
+    display: 'flex', alignItems: 'center',
+    backgroundColor: '#f2f4f7', paddingTop: 10, paddingBottom: 10,
+    paddingLeft: 12, paddingRight: 12,
+    border: 'none', width: '100%', textAlign: 'left',
   },
-  skuAccordionTitle: {
-    flex: 1, fontSize: 13, fontWeight: '600', color: '#1b1b38',
-  },
+  skuAccordionTitle: { flex: 1, fontSize: 13, fontWeight: '600', color: '#1b1b38' },
   skuBadge: {
     backgroundColor: '#8a94a0', borderRadius: 10,
-    paddingHorizontal: 8, paddingVertical: 2,
+    paddingLeft: 8, paddingRight: 8, paddingTop: 2, paddingBottom: 2,
   },
   skuBadgeDone: { backgroundColor: '#3ba755' },
   skuBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
-  skuAccordionBody: {
-    padding: 12, backgroundColor: '#fff',
-  },
-  skuFieldLabel: {
-    fontSize: 12, fontWeight: '600', color: '#1b1b38', marginBottom: 4,
-  },
-  skuFieldHint: {
-    fontWeight: '400', color: '#67717e',
-  },
-
-  overlay: {
-    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center',
-    zIndex: 100,
-  },
-  dialog: {
-    backgroundColor: '#fff', borderRadius: 4, padding: 24,
-    width: '85%', maxWidth: 400,
-    borderWidth: 1, borderColor: '#d8dde6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 8,
-  },
-  dialogTitle:      { fontSize: 16, fontWeight: '700', color: '#1b1b38', marginBottom: 10 },
-  dialogMsg:        { fontSize: 13, color: '#67717e', lineHeight: 20, marginBottom: 24 },
-  dialogBtns:       { flexDirection: 'row', gap: 10 },
-  dialogCancel:     { flex: 1, borderWidth: 1, borderColor: '#d8dde6', borderRadius: 4, paddingVertical: 11, alignItems: 'center' },
-  dialogCancelText: { color: '#67717e', fontWeight: '600', fontSize: 13 },
-  dialogLeave:      { flex: 1, backgroundColor: '#d93025', borderRadius: 4, paddingVertical: 11, alignItems: 'center' },
-  dialogLeaveText:  { color: '#fff', fontWeight: '700', fontSize: 13 },
-});
+  skuAccordionBody: { padding: 12, backgroundColor: '#fff' },
+  skuFieldLabel: { fontSize: 12, fontWeight: '600', color: '#1b1b38', marginBottom: 4, display: 'block' },
+  skuFieldHint: { fontWeight: '400', color: '#67717e' },
+};

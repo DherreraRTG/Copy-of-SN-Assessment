@@ -1,4 +1,4 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useNavigate, useLocation } from 'react-router-dom';
 
 const ERRORS = {
   auth: {
@@ -31,8 +31,10 @@ function classify(message = '') {
   return 'default';
 }
 
-export default function ErrorScreen({ route, navigation }) {
-  const { message, onRetry } = route?.params || {};
+export default function ErrorScreen() {
+  const navigate  = useNavigate();
+  const location  = useLocation();
+  const { message, onRetry } = location.state || {};
   const type = classify(message);
   const { icon, title, message: friendlyMessage } = ERRORS[type];
 
@@ -40,58 +42,61 @@ export default function ErrorScreen({ route, navigation }) {
     if (onRetry) {
       onRetry();
     } else {
-      navigation.reset({ index: 0, routes: [{ name: 'MyAssessments' }] });
+      navigate('/', { replace: true });
     }
   }
 
   return (
-    <View style={s.container}>
-      <View style={s.card}>
-        <Text style={s.icon}>{icon}</Text>
-        <Text style={s.title}>{title}</Text>
-        <Text style={s.message}>{friendlyMessage}</Text>
+    <div style={s.container}>
+      <div style={s.card}>
+        <span style={s.icon}>{icon}</span>
+        <p style={s.title}>{title}</p>
+        <p style={s.message}>{friendlyMessage}</p>
 
         {message ? (
-          <View style={s.detailBox}>
-            <Text style={s.detailText}>{message}</Text>
-          </View>
+          <div style={s.detailBox}>
+            <span style={s.detailText}>{message}</span>
+          </div>
         ) : null}
 
-        <TouchableOpacity style={s.btn} onPress={handleRetry}>
-          <Text style={s.btnText}>Try Again</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={s.secondaryBtn} onPress={() => navigation.reset({ index: 0, routes: [{ name: 'MyAssessments' }] })}>
-          <Text style={s.secondaryBtnText}>Go to Home</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+        <button style={s.btn} onClick={handleRetry}>Try Again</button>
+        <button style={s.secondaryBtn} onClick={() => navigate('/', { replace: true })}>
+          Go to Home
+        </button>
+      </div>
+    </div>
   );
 }
 
-const s = StyleSheet.create({
+const s = {
   container: {
     flex: 1, backgroundColor: '#f2f4f7',
-    justifyContent: 'center', alignItems: 'center', padding: 24,
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
+    padding: 24, minHeight: '100vh',
   },
   card: {
     backgroundColor: '#fff', borderRadius: 4, padding: 32,
-    width: '100%', maxWidth: 440, alignItems: 'center',
-    borderWidth: 1, borderColor: '#d8dde6',
+    width: '100%', maxWidth: 440,
+    border: '1px solid #d8dde6',
+    display: 'flex', flexDirection: 'column', alignItems: 'center',
   },
-  icon:    { fontSize: 40, marginBottom: 16 },
-  title:   { fontSize: 18, fontWeight: '700', color: '#1b1b38', marginBottom: 8, textAlign: 'center' },
-  message: { fontSize: 13, color: '#67717e', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+  icon:    { fontSize: 40, marginBottom: 16, display: 'block' },
+  title:   { fontSize: 18, fontWeight: '700', color: '#1b1b38', marginBottom: 8, textAlign: 'center', marginTop: 0 },
+  message: { fontSize: 13, color: '#67717e', textAlign: 'center', lineHeight: '20px', marginBottom: 16, marginTop: 0 },
   detailBox: {
     backgroundColor: '#fef2f2', borderRadius: 4, padding: 12,
-    width: '100%', marginBottom: 24, borderWidth: 1, borderColor: '#fecaca',
+    width: '100%', marginBottom: 24, border: '1px solid #fecaca',
   },
-  detailText: { fontSize: 11, color: '#991b1b', fontFamily: 'monospace', textAlign: 'center' },
+  detailText: { fontSize: 11, color: '#991b1b', fontFamily: 'monospace', textAlign: 'center', display: 'block' },
   btn: {
     backgroundColor: '#0070d2', borderRadius: 4,
-    paddingVertical: 12, width: '100%', alignItems: 'center', marginBottom: 10,
+    paddingTop: 12, paddingBottom: 12, width: '100%',
+    marginBottom: 10, border: 'none',
+    color: '#fff', fontWeight: '700', fontSize: 14,
   },
-  btnText:         { color: '#fff', fontWeight: '700', fontSize: 14 },
-  secondaryBtn:    { paddingVertical: 8, width: '100%', alignItems: 'center' },
-  secondaryBtnText:{ color: '#67717e', fontSize: 13 },
-});
+  secondaryBtn: {
+    paddingTop: 8, paddingBottom: 8, width: '100%',
+    background: 'none', border: 'none',
+    color: '#67717e', fontSize: 13,
+  },
+};

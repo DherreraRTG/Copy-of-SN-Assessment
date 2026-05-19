@@ -1,4 +1,3 @@
-import { View, Text, StyleSheet } from 'react-native';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 
 export default function OfflineBanner() {
@@ -6,23 +5,15 @@ export default function OfflineBanner() {
   if (isOnline) return null;
 
   return (
-    <View style={styles.banner}>
-      <Text style={styles.text}>⚠ Offline — answers saved locally, will sync when reconnected</Text>
-    </View>
+    <div style={{
+      backgroundColor: '#b45309',
+      paddingTop: 8, paddingBottom: 8,
+      paddingLeft: 16, paddingRight: 16,
+      display: 'flex', justifyContent: 'center',
+    }}>
+      <span style={{ color: '#fff', fontSize: 13, fontWeight: '500', textAlign: 'center' }}>
+        ⚠ Offline — answers saved locally, will sync when reconnected
+      </span>
+    </div>
   );
 }
-
-const styles = StyleSheet.create({
-  banner: {
-    backgroundColor: '#b45309',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center'
-  },
-  text: {
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: '500',
-    textAlign: 'center'
-  }
-});

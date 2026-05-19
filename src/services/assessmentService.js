@@ -1,40 +1,34 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
+import storage from '../lib/storage';
 
-const DEFAULT_INSTANCE = Constants.expoConfig?.extra?.snInstance || 'https://roomstogodev.service-now.com';
+const DEFAULT_INSTANCE = import.meta.env.VITE_SN_INSTANCE || 'https://roomstogodev.service-now.com';
 const INSTANCE_KEY = 'sn_instance';
-
 const TOKEN_KEY    = 'sn_oauth_token';
 const EXPIRY_KEY   = 'sn_oauth_expiry';
 const REFRESH_KEY  = 'sn_oauth_refresh';
 const SCHEME_KEY   = 'sn_oauth_scheme';
 
-// Store the SN instance. Accepts either a full URL or just the subdomain (e.g. "roomstogoqua").
 export async function setSnInstance(value) {
   if (!value) return;
-  // Normalise to a full URL
   const full = value.startsWith('http')
     ? value.replace(/\/$/, '')
     : `https://${value.replace(/\/$/, '')}.service-now.com`;
-  await AsyncStorage.setItem(INSTANCE_KEY, full);
-  // Clear cached token so it re-auths against the correct instance
-  await AsyncStorage.multiRemove([TOKEN_KEY, EXPIRY_KEY, REFRESH_KEY, SCHEME_KEY]);
+  await storage.setItem(INSTANCE_KEY, full);
+  await storage.multiRemove([TOKEN_KEY, EXPIRY_KEY, REFRESH_KEY, SCHEME_KEY]);
 }
 
 async function getApiBase() {
-  const stored = await AsyncStorage.getItem(INSTANCE_KEY);
+  const stored = await storage.getItem(INSTANCE_KEY);
   return `${stored || DEFAULT_INSTANCE}/api/x_rtg_npm/offline_assessment`;
 }
 
-// ─── Token management ────────────────────────────────────────────────────────
-
 async function callTokenProxy(body) {
-  const stored = await AsyncStorage.getItem(INSTANCE_KEY);
+  const stored = await storage.getItem(INSTANCE_KEY);
   const instanceKey = stored
     ? stored.replace(/^https?:\/\//, '').split('.')[0]
     : null;
 
-  const res = await fetch('/api/token', {
+  const TOKEN_PROXY_URL = import.meta.env.VITE_TOKEN_PROXY_URL || '/api/token';
+  const res = await fetch(TOKEN_PROXY_URL, {
     method:  'POST',
     headers: { 'Content-Type': 'application/json' },
     body:    JSON.stringify({ ...body, ...(instanceKey ? { instance_key: instanceKey } : {}) }),
@@ -43,7 +37,7 @@ async function callTokenProxy(body) {
   if (!res.ok || json.error) throw new Error(json.error || 'Auth failed');
 
   const expiresAt = Date.now() + (json.expires_in - 60) * 1000;
-  await AsyncStorage.multiSet([
+  await storage.multiSet([
     [TOKEN_KEY,  json.access_token],
     [EXPIRY_KEY, String(expiresAt)],
     [SCHEME_KEY, json.scheme || 'Bearer'],
@@ -57,35 +51,33 @@ async function fetchNewToken() {
 }
 
 async function refreshToken() {
-  const refresh = await AsyncStorage.getItem(REFRESH_KEY);
+  const refresh = await storage.getItem(REFRESH_KEY);
   if (!refresh) throw new Error('No refresh token');
   return callTokenProxy({ refresh_token: refresh });
 }
 
 async function getValidToken() {
-  const [token, expiry] = await AsyncStorage.multiGet([TOKEN_KEY, EXPIRY_KEY])
+  const [token, expiry] = await storage.multiGet([TOKEN_KEY, EXPIRY_KEY])
     .then(pairs => pairs.map(([, v]) => v));
 
   if (token && expiry && Date.now() < Number(expiry)) return token;
 
-  // Try refresh first, fall back to full re-auth
   try { return await refreshToken(); } catch {}
   return fetchNewToken();
 }
 
 async function getAuthHeaders() {
   const token = await getValidToken();
-  const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
+  const scheme = await storage.getItem(SCHEME_KEY) || 'Bearer';
   return { 'Content-Type': 'application/json', 'Authorization': `${scheme} ${token}` };
 }
 
-// Fetch wrapper with automatic 401 retry after token refresh
 async function apiFetch(url, options, retried = false) {
   const res = await fetch(url, options);
   if (res.status === 401 && !retried) {
     try {
       const token = await fetchNewToken();
-      const scheme = await AsyncStorage.getItem(SCHEME_KEY) || 'Bearer';
+      const scheme = await storage.getItem(SCHEME_KEY) || 'Bearer';
       const headers = { ...options.headers, Authorization: `${scheme} ${token}` };
       return apiFetch(url, { ...options, headers }, true);
     } catch {
@@ -98,9 +90,6 @@ async function apiFetch(url, options, retried = false) {
   return res;
 }
 
-// ─── Public API ──────────────────────────────────────────────────────────────
-
-// Call once on app start to warm up the token while online
 export async function initAuth() {
   try { await getValidToken(); } catch {}
 }
@@ -119,7 +108,6 @@ export async function fetchAssessmentByInstance(instanceSysId) {
 
   return result.body ?? result;
 }
-
 
 export async function submitAssessment(payload) {
   const headers = await getAuthHeaders();

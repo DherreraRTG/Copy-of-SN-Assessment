@@ -1,9 +1,16 @@
 import { useState, useEffect } from 'react';
-import {
-  View, Text, ScrollView, TouchableOpacity,
-  StyleSheet, ActivityIndicator
-} from 'react-native';
+import { useNavigate } from 'react-router-dom';
 import { assessmentStore } from '../store/assessmentStore';
+
+function Spinner() {
+  return (
+    <div style={{
+      width: 36, height: 36, borderRadius: '50%',
+      border: '3px solid #e0e0e0', borderTopColor: '#0a2540',
+      animation: 'spin 0.8s linear infinite',
+    }} />
+  );
+}
 
 function extractSkus(assessment) {
   if (assessment.available_skus?.length) return assessment.available_skus;
@@ -13,16 +20,17 @@ function extractSkus(assessment) {
     .filter(l => /^SKU:/i.test(l))
     .map((l, i) => ({
       sys_id: `sku_${i}`,
-      label: l.replace(/^SKU:\s*/i, '').trim()
+      label:  l.replace(/^SKU:\s*/i, '').trim(),
     }));
 }
 
-export default function SkuSelection({ navigation }) {
-  const [assessment, setAssessment] = useState(assessmentStore.get());
-  const [assessing, setAssessing] = useState(() => extractSkus(assessmentStore.get() || {}));
-  const [skipped,   setSkipped]   = useState([]);
-  const [hiAssess,  setHiAssess]  = useState([]);
-  const [hiSkip,    setHiSkip]    = useState([]);
+export default function SkuSelection() {
+  const navigate = useNavigate();
+  const [assessment,     setAssessment]     = useState(assessmentStore.get());
+  const [assessing,      setAssessing]      = useState(() => extractSkus(assessmentStore.get() || {}));
+  const [skipped,        setSkipped]        = useState([]);
+  const [hiAssess,       setHiAssess]       = useState([]);
+  const [hiSkip,         setHiSkip]         = useState([]);
   const [ready,          setReady]          = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
 
@@ -32,21 +40,18 @@ export default function SkuSelection({ navigation }) {
       if (!stored) return;
       if (!assessment) setAssessment(stored);
 
-      // If Start was already pressed, go straight to the player
       const committed = await assessmentStore.loadSkus();
       if (committed) {
-        navigation.replace('AssessmentPlayer');
+        navigate('/player', { replace: true });
         return;
       }
 
-      // Restore draft selection if available and non-empty
       const draft = await assessmentStore.loadSkuDraft();
       const draftHasContent = draft && (draft.assessing.length > 0 || draft.skipped.length > 0);
       if (draftHasContent) {
         setAssessing(draft.assessing);
         setSkipped(draft.skipped);
       } else {
-        // No draft or empty draft (e.g. leftover from a bug) — use the assessment's SKUs
         setAssessing(extractSkus(stored));
       }
       setReady(true);
@@ -54,7 +59,6 @@ export default function SkuSelection({ navigation }) {
     init();
   }, []);
 
-  // Auto-save draft on every selection change (not before init has restored state)
   useEffect(() => {
     if (!ready) return;
     assessmentStore.saveSkuDraft({ assessing, skipped });
@@ -81,18 +85,18 @@ export default function SkuSelection({ navigation }) {
     setHiSkip([]);
   }
 
-  function handleStart() {
-    setConfirmVisible(true);
-  }
-
   async function doStart() {
     setConfirmVisible(false);
     await assessmentStore.saveSkus(assessing);
-    navigation.replace('AssessmentPlayer');
+    navigate('/player', { replace: true });
   }
 
   if (!assessment) {
-    return <View style={s.loading}><ActivityIndicator color="#0a2540" size="large" /></View>;
+    return (
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
+        <Spinner />
+      </div>
+    );
   }
 
   const description = assessment.description || (() => {
@@ -101,178 +105,168 @@ export default function SkuSelection({ navigation }) {
   })();
 
   return (
-    <View style={s.container}>
+    <div style={s.container}>
       {/* Header */}
-      <View style={s.header}>
-        <Text style={s.title} numberOfLines={1}>{assessment.title}</Text>
-        <Text style={s.subtitle}>
-          Remove any SKUs you won't be assessing today.
-        </Text>
-        {description ? (
-          <Text style={s.desc}>{description}</Text>
-        ) : null}
-      </View>
+      <div style={s.header}>
+        <p style={s.title}>{assessment.title}</p>
+        <p style={s.subtitle}>Remove any SKUs you won't be assessing today.</p>
+        {description ? <p style={s.desc}>{description}</p> : null}
+      </div>
 
       {/* Dual-list body */}
-      <View style={s.body}>
+      <div style={s.body}>
         {/* Left: Assessing */}
-        <View style={s.pane}>
-          <View style={s.paneHeader}>
-            <Text style={s.paneTitle}>Assessing ({assessing.length})</Text>
-          </View>
-          <ScrollView style={s.list}>
-            {assessing.length === 0 && (
-              <Text style={s.empty}>No SKUs selected</Text>
-            )}
+        <div style={s.pane}>
+          <div style={s.paneHeader}>
+            <span style={s.paneTitle}>Assessing ({assessing.length})</span>
+          </div>
+          <div style={s.list}>
+            {assessing.length === 0 && <span style={s.empty}>No SKUs selected</span>}
             {assessing.map(sk => {
               const hi = hiAssess.includes(sk.sys_id);
               return (
-                <TouchableOpacity
+                <button
                   key={sk.sys_id}
-                  style={[s.item, hi && s.itemHi]}
-                  onPress={() => toggleHiAssess(sk.sys_id)}
+                  style={{ ...s.item, ...(hi ? s.itemHi : {}) }}
+                  onClick={() => toggleHiAssess(sk.sys_id)}
                 >
-                  <Text style={[s.itemText, hi && s.itemTextHi]}>{sk.label}</Text>
-                </TouchableOpacity>
+                  <span style={{ ...s.itemText, ...(hi ? s.itemTextHi : {}) }}>{sk.label}</span>
+                </button>
               );
             })}
-          </ScrollView>
-        </View>
+          </div>
+        </div>
 
         {/* Middle buttons */}
-        <View style={s.btnCol}>
-          <TouchableOpacity
-            style={[s.moveBtn, s.moveBtnSkip, !hiAssess.length && s.moveBtnDisabled]}
-            onPress={skip}
+        <div style={s.btnCol}>
+          <button
+            style={{ ...s.moveBtn, ...s.moveBtnSkip, ...(!hiAssess.length ? s.moveBtnDisabled : {}) }}
+            onClick={skip}
             disabled={!hiAssess.length}
           >
-            <Text style={s.moveBtnText}>{'Skip\n>>'}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[s.moveBtn, !hiSkip.length && s.moveBtnDisabled]}
-            onPress={restore}
+            Skip &gt;&gt;
+          </button>
+          <button
+            style={{ ...s.moveBtn, ...(!hiSkip.length ? s.moveBtnDisabled : {}) }}
+            onClick={restore}
             disabled={!hiSkip.length}
           >
-            <Text style={s.moveBtnText}>{'<<\nAdd Back'}</Text>
-          </TouchableOpacity>
-        </View>
+            &lt;&lt; Add Back
+          </button>
+        </div>
 
         {/* Right: Not Assessing */}
-        <View style={s.pane}>
-          <View style={[s.paneHeader, s.paneHeaderSkip]}>
-            <Text style={s.paneTitle}>Not Assessing ({skipped.length})</Text>
-          </View>
-          <ScrollView style={s.list}>
-            {skipped.length === 0 && (
-              <Text style={s.empty}>None removed</Text>
-            )}
+        <div style={s.pane}>
+          <div style={{ ...s.paneHeader, ...s.paneHeaderSkip }}>
+            <span style={s.paneTitle}>Not Assessing ({skipped.length})</span>
+          </div>
+          <div style={s.list}>
+            {skipped.length === 0 && <span style={s.empty}>None removed</span>}
             {skipped.map(sk => {
               const hi = hiSkip.includes(sk.sys_id);
               return (
-                <TouchableOpacity
+                <button
                   key={sk.sys_id}
-                  style={[s.item, hi && s.itemHi]}
-                  onPress={() => toggleHiSkip(sk.sys_id)}
+                  style={{ ...s.item, ...(hi ? s.itemHi : {}) }}
+                  onClick={() => toggleHiSkip(sk.sys_id)}
                 >
-                  <Text style={[s.itemText, hi && s.itemTextHi]}>{sk.label}</Text>
-                </TouchableOpacity>
+                  <span style={{ ...s.itemText, ...(hi ? s.itemTextHi : {}) }}>{sk.label}</span>
+                </button>
               );
             })}
-          </ScrollView>
-        </View>
-      </View>
+          </div>
+        </div>
+      </div>
 
       {/* Footer */}
-      <View style={s.footer}>
-        <TouchableOpacity
-          onPress={handleStart}
+      <div style={s.footer}>
+        <button
+          onClick={() => setConfirmVisible(true)}
           disabled={assessing.length === 0}
-          style={[s.startBtn, assessing.length === 0 && s.startBtnDisabled]}
+          style={{ ...s.startBtn, ...(assessing.length === 0 ? s.startBtnDisabled : {}) }}
         >
-          <Text style={s.startBtnText}>
-            Start Assessment{assessing.length > 0 ? ` (${assessing.length} SKU${assessing.length > 1 ? 's' : ''})` : ''}
-          </Text>
-        </TouchableOpacity>
-      </View>
+          Start Assessment{assessing.length > 0 ? ` (${assessing.length} SKU${assessing.length > 1 ? 's' : ''})` : ''}
+        </button>
+      </div>
 
       {/* Confirmation modal */}
       {confirmVisible && (
-        <View style={s.overlay}>
-          <View style={s.dialog}>
-            <Text style={s.dialogTitle}>Start Assessment?</Text>
-            <Text style={s.dialogMsg}>
+        <div style={s.overlay}>
+          <div style={s.dialog}>
+            <p style={s.dialogTitle}>Start Assessment?</p>
+            <p style={s.dialogMsg}>
               {`You're about to start with ${assessing.length} SKU${assessing.length !== 1 ? 's' : ''}. Once started, your SKU selection is locked and cannot be changed.`}
-            </Text>
-            <View style={s.dialogBtns}>
-              <TouchableOpacity style={s.dialogCancel} onPress={() => setConfirmVisible(false)}>
-                <Text style={s.dialogCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={s.dialogConfirm} onPress={doStart}>
-                <Text style={s.dialogConfirmText}>Start</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+            </p>
+            <div style={s.dialogBtns}>
+              <button style={s.dialogCancel} onClick={() => setConfirmVisible(false)}>
+                <span style={s.dialogCancelText}>Cancel</span>
+              </button>
+              <button style={s.dialogConfirm} onClick={doStart}>
+                <span style={s.dialogConfirmText}>Start</span>
+              </button>
+            </div>
+          </div>
+        </div>
       )}
-    </View>
+    </div>
   );
 }
 
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f2f4f7' },
-  loading: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+const s = {
+  container: { display: 'flex', flexDirection: 'column', height: '100vh', backgroundColor: '#f2f4f7', position: 'relative' },
 
-  header: { backgroundColor: '#1b1b38', padding: 16, paddingTop: 20 },
-  title: { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4 },
-  subtitle: { fontSize: 12, color: '#a0a8c0', marginBottom: 6 },
-  desc: { fontSize: 12, color: '#a0a8c0', lineHeight: 18, marginTop: 4 },
+  header:   { backgroundColor: '#1b1b38', padding: 16, paddingTop: 20 },
+  title:    { fontSize: 16, fontWeight: '700', color: '#fff', marginBottom: 4, marginTop: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+  subtitle: { fontSize: 12, color: '#a0a8c0', marginBottom: 6, marginTop: 0 },
+  desc:     { fontSize: 12, color: '#a0a8c0', lineHeight: '18px', marginTop: 4, marginBottom: 0 },
 
-  body: { flex: 1, flexDirection: 'row', padding: 16, gap: 10 },
-  pane: { flex: 1, borderWidth: 1, borderColor: '#d8dde6', borderRadius: 4, overflow: 'hidden' },
-  paneHeader: { backgroundColor: '#293043', paddingVertical: 8, paddingHorizontal: 10 },
+  body: { flex: 1, display: 'flex', flexDirection: 'row', padding: 16, gap: 10, overflow: 'hidden' },
+  pane: { flex: 1, border: '1px solid #d8dde6', borderRadius: 4, overflow: 'hidden', display: 'flex', flexDirection: 'column' },
+  paneHeader: { backgroundColor: '#293043', paddingTop: 8, paddingBottom: 8, paddingLeft: 10, paddingRight: 10 },
   paneHeaderSkip: { backgroundColor: '#3d2020' },
-  paneTitle: { color: '#fff', fontWeight: '600', fontSize: 12, textAlign: 'center' },
-  list: { backgroundColor: '#ffffff', flex: 1, minHeight: 200 },
-  empty: { padding: 12, color: '#67717e', fontSize: 13, textAlign: 'center' },
+  paneTitle: { color: '#fff', fontWeight: '600', fontSize: 12, textAlign: 'center', display: 'block' },
+  list: { backgroundColor: '#ffffff', flex: 1, overflowY: 'auto', minHeight: 200, display: 'flex', flexDirection: 'column' },
+  empty: { padding: 12, color: '#67717e', fontSize: 13, textAlign: 'center', display: 'block' },
   item: {
-    paddingVertical: 9, paddingHorizontal: 12,
-    borderBottomWidth: 1, borderBottomColor: '#d8dde6',
+    paddingTop: 9, paddingBottom: 9, paddingLeft: 12, paddingRight: 12,
+    background: 'none', border: 'none', borderBottom: '1px solid #d8dde6',
+    textAlign: 'left', width: '100%',
   },
   itemHi: { backgroundColor: '#e8f0fe' },
   itemText: { fontSize: 13, color: '#1b1b38' },
   itemTextHi: { color: '#0070d2', fontWeight: '600' },
 
-  btnCol: { justifyContent: 'center', gap: 12, width: 72 },
+  btnCol: { display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 12, width: 72 },
   moveBtn: {
     backgroundColor: '#293043', borderRadius: 4,
-    paddingVertical: 10, paddingHorizontal: 6, alignItems: 'center'
+    paddingTop: 10, paddingBottom: 10, paddingLeft: 6, paddingRight: 6,
+    border: 'none', color: '#fff', fontWeight: '600', fontSize: 12,
+    textAlign: 'center', lineHeight: '18px',
   },
-  moveBtnSkip: { backgroundColor: '#5c1a1a' },
+  moveBtnSkip:     { backgroundColor: '#5c1a1a' },
   moveBtnDisabled: { opacity: 0.35 },
-  moveBtnText: { color: '#fff', fontWeight: '600', fontSize: 12, textAlign: 'center', lineHeight: 18 },
 
-  footer: { padding: 16, borderTopWidth: 1, borderTopColor: '#d8dde6', backgroundColor: '#fff' },
-  startBtn: { backgroundColor: '#0070d2', borderRadius: 4, paddingVertical: 13, alignItems: 'center' },
+  footer: { padding: 16, borderTop: '1px solid #d8dde6', backgroundColor: '#fff' },
+  startBtn: { backgroundColor: '#0070d2', borderRadius: 4, paddingTop: 13, paddingBottom: 13, border: 'none', color: '#fff', fontWeight: '700', fontSize: 14, width: '100%' },
   startBtnDisabled: { opacity: 0.4 },
-  startBtnText: { color: '#fff', fontWeight: '700', fontSize: 14 },
 
   overlay: {
     position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
-    backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    display: 'flex', justifyContent: 'center', alignItems: 'center',
     zIndex: 100,
   },
   dialog: {
     backgroundColor: '#fff', borderRadius: 4, padding: 24,
     width: '85%', maxWidth: 400,
-    borderWidth: 1, borderColor: '#d8dde6',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15, shadowRadius: 8, elevation: 8,
+    border: '1px solid #d8dde6',
+    boxShadow: '0 4px 8px rgba(0,0,0,0.15)',
   },
-  dialogTitle:   { fontSize: 16, fontWeight: '700', color: '#1b1b38', marginBottom: 10 },
-  dialogMsg:     { fontSize: 13, color: '#67717e', lineHeight: 20, marginBottom: 24 },
-  dialogBtns:    { flexDirection: 'row', gap: 10 },
-  dialogCancel:  { flex: 1, borderWidth: 1, borderColor: '#d8dde6', borderRadius: 4, paddingVertical: 11, alignItems: 'center' },
-  dialogCancelText: { color: '#67717e', fontWeight: '600', fontSize: 13 },
-  dialogConfirm: { flex: 1, backgroundColor: '#0070d2', borderRadius: 4, paddingVertical: 11, alignItems: 'center' },
+  dialogTitle:       { fontSize: 16, fontWeight: '700', color: '#1b1b38', marginBottom: 10, marginTop: 0 },
+  dialogMsg:         { fontSize: 13, color: '#67717e', lineHeight: '20px', marginBottom: 24, marginTop: 0 },
+  dialogBtns:        { display: 'flex', flexDirection: 'row', gap: 10 },
+  dialogCancel:      { flex: 1, border: '1px solid #d8dde6', borderRadius: 4, paddingTop: 11, paddingBottom: 11, background: 'none' },
+  dialogCancelText:  { color: '#67717e', fontWeight: '600', fontSize: 13 },
+  dialogConfirm:     { flex: 1, backgroundColor: '#0070d2', borderRadius: 4, paddingTop: 11, paddingBottom: 11, border: 'none' },
   dialogConfirmText: { color: '#fff', fontWeight: '700', fontSize: 13 },
-});
+};
