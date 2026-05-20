@@ -4,7 +4,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 export default function SubmissionSuccess() {
   const navigate  = useNavigate();
   const location  = useLocation();
-  const { instanceNumber, answered, skipped, submittedAt } = location.state || {};
+  const { instanceNumber, answered, skipped, submittedAt, failedPhotoCount, totalPhotos } = location.state || {};
   const [closeFailed, setCloseFailed] = useState(false);
 
   const time = submittedAt
@@ -25,6 +25,13 @@ export default function SubmissionSuccess() {
 
         <p style={s.heading}>Submitted Successfully</p>
         <p style={s.sub}>Your assessment has been submitted to ServiceNow.</p>
+
+        {failedPhotoCount > 0 && (
+          <div style={s.warning}>
+            <strong>{failedPhotoCount} of {totalPhotos} photo{failedPhotoCount !== 1 ? 's' : ''} could not be uploaded.</strong>
+            {' '}Your answers were saved. Please contact your administrator to re-upload the missing photos.
+          </div>
+        )}
 
         <div style={s.divider} />
         <Row label="Submitted at" value={time} />
@@ -83,4 +90,9 @@ const s = {
     border: 'none', color: '#fff', fontWeight: '700', fontSize: 14,
   },
   closeHint: { marginTop: 4, fontSize: 13, color: '#67717e', textAlign: 'center' },
+  warning: {
+    backgroundColor: '#fff8e1', border: '1px solid #f9a825', borderRadius: 4,
+    padding: '10px 14px', marginTop: 12, fontSize: 13, color: '#5d4037',
+    lineHeight: '20px', width: '100%', boxSizing: 'border-box',
+  },
 };
